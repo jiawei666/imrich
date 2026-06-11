@@ -11,7 +11,7 @@ export function NumberField({
   className,
 }: {
   label: string
-  op?: '≥' | '≤'
+  op?: '≥' | '≤' | '='
   unit?: string
   value: number
   onChange?: (v: number) => void
