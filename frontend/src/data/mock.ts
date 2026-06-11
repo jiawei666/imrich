@@ -1,4 +1,4 @@
-import type { Candidate, StockDetail, RefreshTask, Kline } from '@/types'
+import type { Candidate, StockDetail, RefreshStatus, Kline, TechnicalCandidate } from '@/types'
 
 export const CANDIDATES: Candidate[] = [
   {
@@ -134,9 +134,39 @@ export const STOCK_DETAIL: StockDetail = {
   ],
 }
 
-export const REFRESH_TASKS: RefreshTask[] = [
-  { label: '股票列表', done: 2500, total: 2500, elapsed: '00:18', status: 'done', progress: 100 },
-  { label: '财报数据', done: 2500, total: 2500, elapsed: '01:24', status: 'done', progress: 100 },
-  { label: '行情数据', done: 2500, total: 2500, elapsed: '00:22', status: 'done', progress: 100 },
-  { label: '研报爬取', done: 2486, total: 2500, elapsed: '02:36', status: 'running', progress: 98 },
+export const REFRESH_STATUS: RefreshStatus = {
+  kline: {
+    status: 'done',
+    updatedAt: '2025-06-16 10:30:00',
+    steps: [
+      { label: '股票列表', done: 2500, total: 2500, elapsed: '00:18', progress: 100 },
+      { label: 'K线数据（日+周+月+季）', done: 2500, total: 2500, elapsed: '03:42', progress: 100 },
+    ],
+  },
+  fundamental: {
+    status: 'idle',
+    updatedAt: null,
+    steps: [
+      { label: '财报数据', done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '业绩预告快报', done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '申万行业指数', done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '研报-全市场元数据', done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '研报-候选池解析', done: 0, total: 0, elapsed: '00:00', progress: 0 },
+    ],
+  },
+}
+
+export const TECH_CANDIDATES: TechnicalCandidate[] = [
+  {
+    code: 'sz300750', name: '宁德时代', industry: '电力设备', close: 243.58,
+    pctChg: 1.2, strategyName: '双线战法', triggerDate: '2025-06-16',
+    diagnostics: { j: 8.3, whiteLine: 240.1, yellowLine: 232.5, pctChg: 1.2 },
+    sortKey: '2025-06-16',
+  },
+  {
+    code: 'sz002371', name: '北方华创', industry: '半导体', close: 412.0,
+    pctChg: 5.6, strategyName: 'B2战法', triggerDate: '2025-06-16',
+    diagnostics: { volRatio: 2.1, pctChg: 5.6, j: 62.0, jPrev: -7.2 },
+    sortKey: '2025-06-16',
+  },
 ]

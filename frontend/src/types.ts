@@ -56,15 +56,6 @@ export interface RiskItem {
   ok: boolean // true = pass / no risk
 }
 
-export interface RefreshTask {
-  label: string
-  done: number
-  total: number
-  elapsed: string
-  status: 'done' | 'running'
-  progress: number
-}
-
 export interface StockDetail {
   code: string
   name: string
