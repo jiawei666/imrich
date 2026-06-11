@@ -36,6 +36,11 @@ export interface Kline {
   close: number
   low: number
   high: number
+  k?: number | null
+  d?: number | null
+  j?: number | null
+  whiteLine?: number | null
+  yellowLine?: number | null
 }
 
 export type KlineTimeframe = 'day' | 'week' | 'month' | 'quarter'
@@ -84,4 +89,70 @@ export interface StockDetail {
   risks: RiskItem[]
 }
 
-export type StrategyId = 'super-growth' | 'oversold-bluechip'
+export type StrategyId =
+  | 'super-growth'
+  | 'oversold-bluechip'
+  | 'trend-support'
+  | 'b2'
+
+export const STRATEGY_CATEGORY: Record<StrategyId, 'fundamental' | 'technical'> = {
+  'super-growth': 'fundamental',
+  'oversold-bluechip': 'fundamental',
+  'trend-support': 'technical',
+  'b2': 'technical',
+}
+
+export interface TechnicalCandidate {
+  code: string
+  name: string
+  industry: string
+  close: number
+  pctChg: number
+  strategyName: string
+  triggerDate: string
+  diagnostics: Record<string, number>
+  sortKey: string
+}
+
+export interface PresetParam {
+  key: string
+  label: string
+  value: number
+  min?: number
+  max?: number
+  step?: number
+  unit?: string
+}
+
+export interface Preset {
+  id: StrategyId
+  category: 'fundamental' | 'technical'
+  name: string
+  params: PresetParam[]
+  warning?: string
+}
+
+export interface RefreshStep {
+  label: string
+  done: number
+  total: number
+  elapsed: string
+  progress: number
+}
+
+export interface RefreshGroup {
+  status: 'idle' | 'running' | 'done' | 'error'
+  updatedAt: string | null
+  steps: RefreshStep[]
+}
+
+export interface RefreshStatus {
+  kline: RefreshGroup
+  fundamental: RefreshGroup
+}
+
+export interface StockKlineResponse {
+  data: Kline[]
+  highLine: number
+  highLabel: string
+}
