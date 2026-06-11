@@ -19,8 +19,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, future=True)
 
 
 def init_db() -> None:
-    global engine, SessionLocal
+    """重建 engine 并按 IMRICH_DB_PATH 重新指向；SessionLocal 原地 reconfigure，
+    使已 `from app.db import SessionLocal` 的模块也能用上新 engine。"""
+    global engine
     engine = _make_engine()
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, future=True)
+    SessionLocal.configure(bind=engine)
     import app.models  # noqa: F401  确保模型已注册
     Base.metadata.create_all(engine)
