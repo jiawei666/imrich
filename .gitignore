@@ -1,0 +1,26 @@
+# Frontend (Node/Vite)
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/.preview
+*.local
+
+# Python (future backend)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local data / databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
