@@ -1,0 +1,62 @@
+import { cn } from '@/lib/utils'
+import type { StrategyId } from '@/types'
+
+const FUNDAMENTAL: { id: StrategyId; label: string }[] = [
+  { id: 'super-growth', label: '创新高超级成长' },
+  { id: 'oversold-bluechip', label: '低位错杀蓝筹' },
+]
+
+const TECHNICAL: { id: StrategyId; label: string }[] = [
+  { id: 'trend-support', label: '双线战法' },
+  { id: 'b2', label: 'B2战法' },
+]
+
+function Item({
+  id, label, active, indent, onSelect,
+}: {
+  id: StrategyId
+  label: string
+  active: boolean
+  indent?: boolean
+  onSelect: (s: StrategyId) => void
+}) {
+  return (
+    <button
+      onClick={() => onSelect(id)}
+      className={cn(
+        'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors',
+        indent && 'pl-6',
+        active
+          ? 'bg-brand-soft font-medium text-brand-strong'
+          : 'text-ink-soft hover:bg-paper-2 hover:text-ink',
+      )}
+    >
+      <span>{label}</span>
+      {active && <span className="size-1.5 rounded-full bg-brand" />}
+    </button>
+  )
+}
+
+export function StrategySidebar({
+  strategy, onSelect,
+}: {
+  strategy: StrategyId
+  onSelect: (s: StrategyId) => void
+}) {
+  return (
+    <aside className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper/40 px-3 py-5">
+      <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+        策略选择
+      </div>
+      {FUNDAMENTAL.map((s) => (
+        <Item key={s.id} {...s} active={strategy === s.id} onSelect={onSelect} />
+      ))}
+
+      <div className="my-2 border-t border-line-soft" />
+      <div className="px-3 pb-1 text-[12px] font-medium text-ink-soft">技术面战法</div>
+      {TECHNICAL.map((s) => (
+        <Item key={s.id} {...s} active={strategy === s.id} indent onSelect={onSelect} />
+      ))}
+    </aside>
+  )
+}
