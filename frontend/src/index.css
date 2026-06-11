@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+
+/* ----------------------------------------------------------------------------
+   I'm Rich — brand theme derived from the logo palette
+   cream/ivory background · navy ("i'm") · brick red ("rich")
+---------------------------------------------------------------------------- */
+@theme {
+  /* Surfaces */
+  --color-cream: #f6efdc;        /* page background (logo cream) */
+  --color-paper: #fffdf7;        /* card surface, warm white */
+  --color-paper-2: #f3ead4;      /* inset / muted surface, chips */
+
+  /* Brand ink — navy from "i'm" */
+  --color-ink: #2b3a4d;          /* primary text / navy */
+  --color-ink-soft: #5d6b79;     /* secondary text */
+  --color-ink-faint: #8b96a1;    /* tertiary / placeholder */
+
+  /* Brand accent — brick red from "rich" */
+  --color-brand: #c0392b;
+  --color-brand-strong: #a82f23;
+  --color-brand-soft: #f2dcd7;   /* tinted background */
+
+  /* Market semantics (A-share convention: red up / green down) */
+  --color-up: #c0392b;           /* reuse brand red for gains */
+  --color-down: #2f8f6f;         /* muted green for losses */
+
+  /* Lines & states */
+  --color-line: #e9e0c9;         /* warm border */
+  --color-line-soft: #f0e8d4;
+  --color-ring: #c0392b;
+
+  /* Fonts */
+  --font-sans: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+
+  /* Radii */
+  --radius-card: 16px;
+  --radius-md: 10px;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Numeric/financial figures read better tabular */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d9cfaf;
+    border-radius: 8px;
+    border: 2px solid var(--color-cream);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #cabf9b;
+  }
+}
