@@ -134,6 +134,7 @@ export interface RefreshStep {
 export interface RefreshGroup {
   status: 'idle' | 'running' | 'done' | 'error'
   updatedAt: string | null
+  error: string | null
   steps: RefreshStep[]
 }
 
@@ -147,3 +148,33 @@ export interface StockKlineResponse {
   highLine: number
   highLabel: string
 }
+
+export interface MetaResponse {
+  stockList: { updatedAt: string | null }
+  klineDay: { updatedAt: string | null }
+  financialReports: { updatedAt: string | null; reportPeriod: string | null }
+  forecasts: { updatedAt: string | null }
+  industryIndex: { updatedAt: string | null }
+  researchReports: { stage1UpdatedAt: string | null; stage2CandidateCount: number }
+}
+
+export interface StockListItem {
+  code: string
+  name: string
+  market_cap: number | null
+  industry: string | null
+  is_st: boolean
+  is_bj: boolean
+  listed_at: string | null
+  updated_at: string | null
+}
+
+export interface StockListResponse {
+  total: number
+  page: number
+  pageSize: number
+  data: StockListItem[]
+}
+
+export type StockSortField = 'code' | 'name' | 'market_cap'
+export type SortOrder = 'asc' | 'desc'

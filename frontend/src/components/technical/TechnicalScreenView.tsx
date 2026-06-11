@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { DataRefreshProgress } from '@/components/screener/DataRefreshProgress'
+import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
 import { TechnicalCandidateList } from './TechnicalCandidateList'
 import { api } from '@/lib/api'
@@ -66,6 +67,8 @@ export function TechnicalScreenView({
   return (
     <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <div className="flex min-w-0 flex-col gap-5">
+        <DataRefreshProgress status={refreshStatus} category="technical" />
+        <StockListCard />
         <TechnicalCandidateList
           preset={preset}
           paramValues={paramValues}
@@ -75,7 +78,6 @@ export function TechnicalScreenView({
           selectedCode={selectedCode}
           onSelect={setSelectedCode}
         />
-        <DataRefreshProgress status={refreshStatus} />
       </div>
 
       <div className="min-w-0">

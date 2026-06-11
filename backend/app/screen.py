@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -7,13 +8,26 @@ import pandas as pd
 from app.db import SessionLocal
 from app.models import Stock, KlineDay
 from app.presets import build_selector, _NAMES
+from app.fundamental_screen import run_fundamental_screen
+from app.pool_filters import filter_default_pool
 
 
 def _load_kline_data() -> Dict[str, pd.DataFrame]:
     """读所有未退市股票的日K，返回 {code: df(date,open,close,high,low,volume)}。"""
     data: Dict[str, pd.DataFrame] = {}
     with SessionLocal() as s:
-        active = [code for (code,) in s.query(Stock.code).filter(Stock.delisted_at.is_(None)).all()]
+        stock_rows = [
+            {
+                "code": st.code,
+                "is_st": st.is_st,
+                "is_bj": st.is_bj,
+                "delisted_at": st.delisted_at,
+                "listed_at": st.listed_at,
+            }
+            for st in s.query(Stock).filter(Stock.delisted_at.is_(None)).all()
+        ]
+        latest_date = s.query(KlineDay.date).order_by(KlineDay.date.desc()).limit(1).scalar() or datetime.now().strftime("%Y-%m-%d")
+        active = [row["code"] for row in filter_default_pool(stock_rows, latest_date)]
         rows = (s.query(KlineDay.code, KlineDay.date, KlineDay.open, KlineDay.close,
                         KlineDay.high, KlineDay.low, KlineDay.volume)
                 .filter(KlineDay.code.in_(active)).order_by(KlineDay.code, KlineDay.date).all())
@@ -66,3 +80,15 @@ def run_technical_screen(preset_id: str, params: Dict[str, Any]) -> List[dict]:
         })
     candidates.sort(key=lambda c: (c["sortKey"], c["code"]), reverse=True)
     return candidates
+
+
+FUNDAMENTAL_PRESETS = {"super-growth", "oversold-bluechip"}
+TECHNICAL_PRESETS = {"trend-support", "b2"}
+
+
+def run_screen(preset_id: str, params: Dict[str, Any]) -> List[dict]:
+    if preset_id in FUNDAMENTAL_PRESETS:
+        return run_fundamental_screen(preset_id, params)
+    if preset_id in TECHNICAL_PRESETS:
+        return run_technical_screen(preset_id, params)
+    raise KeyError(f"未知预设: {preset_id}")

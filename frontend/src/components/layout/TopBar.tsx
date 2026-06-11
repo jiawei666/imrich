@@ -8,7 +8,7 @@ export function TopBar({
   onRefreshFundamental,
 }: {
   updatedAt: string
-  onRefreshKline: () => void
+  onRefreshKline: (reloadStockList: boolean) => void
   onRefreshFundamental: () => void
 }) {
   return (
@@ -19,15 +19,38 @@ export function TopBar({
         <span className="text-[13px] text-ink-soft">
           数据更新于 <span className="tnum">{updatedAt}</span>
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRefreshKline}
-          title="更新股票列表与全市场K线数据（日/周/月/季），建议每日收盘后执行"
-        >
-          <RotateCw className="size-3.5" />
-          刷新行情
-        </Button>
+
+        {/* 刷新行情 — hover 展开选项 */}
+        <div className="group relative">
+          <Button
+            variant="outline"
+            size="sm"
+            title="更新K线数据（日/周/月/季），建议每日收盘后执行"
+          >
+            <RotateCw className="size-3.5" />
+            刷新行情
+          </Button>
+          <div className="pointer-events-none absolute right-0 top-full z-50 pt-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+            <div className="w-52 rounded-xl border border-line bg-paper shadow-lg">
+              <button
+                onClick={() => onRefreshKline(true)}
+                className="flex w-full flex-col px-4 py-2.5 text-left text-sm transition-colors hover:bg-paper-2 rounded-t-xl"
+              >
+                <span className="font-medium text-ink">完整刷新</span>
+                <span className="text-[11px] text-ink-soft">重新拉取股票列表 + K线</span>
+              </button>
+              <div className="mx-3 border-t border-line-soft" />
+              <button
+                onClick={() => onRefreshKline(false)}
+                className="flex w-full flex-col px-4 py-2.5 text-left text-sm transition-colors hover:bg-paper-2 rounded-b-xl"
+              >
+                <span className="font-medium text-ink">仅刷新K线</span>
+                <span className="text-[11px] text-ink-soft">跳过股票列表，更快</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <Button
           variant="outline"
           size="sm"

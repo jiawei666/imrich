@@ -4,6 +4,7 @@ import pandas as pd
 from app.indicators import (
     compute_kdj, compute_bbi, compute_dif,
     compute_zhixing_short_trend, compute_zhixing_bull_bear,
+    _find_peaks,
 )
 
 
@@ -43,3 +44,9 @@ def test_short_trend_constant_series_equals_price():
 def test_bbi_needs_24_points():
     s = compute_bbi(_df([float(i) for i in range(30)]))
     assert not np.isnan(float(s.iloc[-1]))
+
+
+def test_find_peaks_detects_local_highs_without_scipy():
+    df = _df([1.0, 3.0, 2.0, 4.0, 1.0])
+    peaks = _find_peaks(df, column="close")
+    assert peaks["close"].tolist() == [3.0, 4.0]

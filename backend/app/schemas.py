@@ -34,3 +34,23 @@ class KlineResponse(BaseModel):
     data: List[KlinePoint]
     highLine: float
     highLabel: str
+
+
+class StockListItem(BaseModel):
+    code: str
+    name: str
+    market_cap: Optional[float] = None
+    industry: Optional[str] = None
+    is_st: bool = False
+    is_bj: bool = False
+    listed_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class StockListResponse(BaseModel):
+    total: int
+    page: int
+    pageSize: int
+    data: List[StockListItem]

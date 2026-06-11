@@ -36,9 +36,32 @@ _FIXED_DEFAULTS: Dict[str, dict] = {
 
 _NAMES = {"trend-support": "双线战法", "b2": "B2战法"}
 
+_FUNDAMENTAL_PRESETS = [
+    {
+        "id": "super-growth",
+        "category": "fundamental",
+        "name": "创新高超级成长",
+        "params": [
+            {"key": "netProfitYoY", "label": "净利润同比下限", "value": 50, "min": 0, "max": 200, "step": 5, "unit": "%"},
+            {"key": "revenueYoY", "label": "营收同比下限", "value": 20, "min": 0, "max": 200, "step": 5, "unit": "%"},
+            {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
+        ],
+    },
+    {
+        "id": "oversold-bluechip",
+        "category": "fundamental",
+        "name": "低位错杀蓝筹",
+        "params": [
+            {"key": "drawdownMin", "label": "距一年高回撤下限", "value": 35, "min": 10, "max": 80, "step": 5, "unit": "%"},
+            {"key": "netProfitYoY", "label": "净利润同比下限", "value": 0, "min": -50, "max": 100, "step": 5, "unit": "%"},
+            {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
+        ],
+    },
+]
+
 
 def get_presets() -> List[dict]:
-    out = []
+    out = [dict(preset) for preset in _FUNDAMENTAL_PRESETS]
     for pid, specs in _PARAM_SPECS.items():
         out.append({
             "id": pid, "category": "technical", "name": _NAMES[pid],

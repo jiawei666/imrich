@@ -1,12 +1,12 @@
 from app.presets import get_presets, build_selector
 
 
-def test_get_presets_returns_two_technical():
+def test_get_presets_returns_fundamental_and_technical():
     presets = get_presets()
     ids = {p["id"] for p in presets}
-    assert ids == {"trend-support", "b2"}
+    assert ids == {"super-growth", "oversold-bluechip", "trend-support", "b2"}
+    assert {p["category"] for p in presets} == {"fundamental", "technical"}
     for p in presets:
-        assert p["category"] == "technical"
         assert isinstance(p["params"], list) and len(p["params"]) > 0
         for param in p["params"]:
             assert {"key", "label", "value"} <= set(param)

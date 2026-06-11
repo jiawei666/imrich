@@ -21,7 +21,7 @@ def _seed_one(code="sz000001", n=50):
 def test_presets_endpoint(client):
     r = client.get("/presets")
     assert r.status_code == 200
-    assert {p["id"] for p in r.json()} == {"trend-support", "b2"}
+    assert {p["id"] for p in r.json()} == {"super-growth", "oversold-bluechip", "trend-support", "b2"}
 
 
 def test_refresh_status_initial(client):
@@ -62,3 +62,38 @@ def test_refresh_kline_triggers_background(client, monkeypatch):
     r = client.post("/refresh/kline")
     assert r.status_code in (200, 202)
     assert called.get("ran") is True
+
+
+def test_refresh_fundamental_triggers_background(client, monkeypatch):
+    refresh.reset_state()
+    called = {}
+    monkeypatch.setattr(refresh, "run_fundamental_refresh", lambda *a, **k: called.setdefault("ran", True))
+    r = client.post("/refresh/fundamental")
+    assert r.status_code in (200, 202)
+    assert called.get("ran") is True
+
+
+def test_screen_dispatches_fundamental_strategy(client, monkeypatch):
+    from app import main as main_module
+
+    monkeypatch.setattr(main_module, "run_screen", lambda preset, params: [{"code": "sz000001"}])
+    r = client.get("/screen", params={"preset": "super-growth", "params": json.dumps({"keywordWindow": 90})})
+    assert r.status_code == 200
+    assert r.json() == [{"code": "sz000001"}]
+
+
+def test_meta_endpoint(client):
+    r = client.get("/meta")
+    assert r.status_code == 200
+    assert "stockList" in r.json()
+
+
+def test_stock_detail_returns_404_for_missing_stock(client):
+    r = client.get("/stock/sz999999")
+    assert r.status_code == 404
+
+
+def test_fundamental_screen_returns_empty_when_no_reports(client):
+    r = client.get("/screen", params={"preset": "super-growth", "params": json.dumps({})})
+    assert r.status_code == 200
+    assert r.json() == []

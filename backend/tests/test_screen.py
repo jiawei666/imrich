@@ -52,3 +52,10 @@ def test_screen_excludes_delisted(db_path):
         s.commit()
     cands = run_technical_screen("b2", {})
     assert cands == []
+
+
+def test_screen_skips_stock_without_enough_kline_history(db_path):
+    init_db()
+    _seed("sz000001", [10.0], [1000.0])
+    cands = run_technical_screen("trend-support", {})
+    assert cands == []
