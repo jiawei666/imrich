@@ -430,3 +430,33 @@ def refresh_research_pdfs(
     if step is not None:
         step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
         step.elapsed = "00:00"
+
+
+def get_status_snapshot() -> dict:
+    """返回 STATE 的序列化快照，并用数据库实际入库量回填进度。"""
+    from app.db import SessionLocal
+    from app.models import Stock, KlineDay
+
+    def _grp(g):
+        return {"status": g.status, "updatedAt": g.updatedAt,
+                "error": g.error, "steps": [vars(s) for s in g.steps]}
+
+    result = {k: _grp(v) for k, v in STATE.items()}
+
+    with SessionLocal() as s:
+        stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
+        kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
+
+    kline_steps = result["kline"]["steps"]
+
+    if stock_count > 0:
+        kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
+        kline_steps[0]["done"] = stock_count
+        kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
+
+    if stock_count > 0:
+        kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
+        kline_steps[1]["done"] = kline_stock_count
+        kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
+
+    return result

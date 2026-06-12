@@ -59,35 +59,7 @@ def refresh_fundamental(background: BackgroundTasks):
 
 @app.get("/refresh/status")
 def refresh_status():
-    from app.db import SessionLocal
-    from app.models import Stock, KlineDay
-
-    def _grp(g):
-        return {"status": g.status, "updatedAt": g.updatedAt,
-                "error": g.error, "steps": [vars(s) for s in g.steps]}
-
-    result = {k: _grp(v) for k, v in refresh.STATE.items()}
-
-    # 用数据库实际数据补充进度，确保前端看到真实入库量而非内存中的 0
-    with SessionLocal() as s:
-        stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
-        kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
-
-    kline_steps = result["kline"]["steps"]
-
-    # 步骤1：股票列表 — 已入库的股票数就是完成数
-    if stock_count > 0:
-        kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
-        kline_steps[0]["done"] = stock_count
-        kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
-
-    # 步骤2：K线数据 — 已入库K线的股票数就是完成数，目标总数取股票列表数
-    if stock_count > 0:
-        kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
-        kline_steps[1]["done"] = kline_stock_count
-        kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
-
-    return result
+    return refresh.get_status_snapshot()
 
 
 @app.get("/meta")
