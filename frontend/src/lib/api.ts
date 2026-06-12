@@ -22,6 +22,13 @@ export const api = {
   presets: () => get<Preset[]>('/presets'),
   meta: () => get<MetaResponse>('/meta'),
   refreshStatus: () => get<RefreshStatus>('/refresh/status'),
+  refreshStatusStream: (onMessage: (status: RefreshStatus) => void) => {
+    const es = new EventSource(`${BASE}/refresh/status/stream`)
+    es.onmessage = (e) => {
+      try { onMessage(JSON.parse(e.data) as RefreshStatus) } catch { /* ignore parse errors */ }
+    }
+    return () => es.close()
+  },
   refreshKline: async (reloadStockList = true) => {
     const r = await fetch(`${BASE}/refresh/kline?reload_stock_list=${reloadStockList}`, { method: 'POST' })
     if (!r.ok) throw new Error(`${r.status}`)
