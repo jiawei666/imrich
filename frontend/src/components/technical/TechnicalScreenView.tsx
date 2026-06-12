@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { DataRefreshProgress } from '@/components/screener/DataRefreshProgress'
 import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
 import { TechnicalFilterCard } from './TechnicalFilterCard'
 import { api } from '@/lib/api'
-import { TECH_CANDIDATES } from '@/data/mock'
 import type { Kline, KlineTimeframe, Preset, RefreshStatus, StrategyId, TechnicalCandidate } from '@/types'
 
 const EMPTY_KLINE: Record<KlineTimeframe, Kline[]> = { day: [], week: [], month: [], quarter: [] }
@@ -16,15 +14,19 @@ export function TechnicalScreenView({
   strategy,
   preset,
   refreshStatus,
+  filterOpen,
+  onToggleFilter,
 }: {
   strategy: StrategyId
   preset: Preset | null
   refreshStatus?: RefreshStatus
+  filterOpen?: boolean
+  onToggleFilter?: () => void
 }) {
   const [paramValues, setParamValues] = useState<Record<string, number>>({})
-  const [candidates, setCandidates] = useState<TechnicalCandidate[]>(TECH_CANDIDATES)
-  const [selectedCode, setSelectedCode] = useState<string>(TECH_CANDIDATES[0]?.code ?? '')
-  const [selectedName, setSelectedName] = useState<string>(TECH_CANDIDATES[0]?.name ?? '')
+  const [candidates, setCandidates] = useState<TechnicalCandidate[]>([])
+  const [selectedCode, setSelectedCode] = useState<string>('')
+  const [selectedName, setSelectedName] = useState<string>('')
   const [screenMode, setScreenMode] = useState<ScreenMode>('market')
   const [kline, setKline] = useState<Record<KlineTimeframe, Kline[]>>(EMPTY_KLINE)
   const [highLine, setHighLine] = useState(0)
@@ -32,8 +34,11 @@ export function TechnicalScreenView({
 
   // 切换策略时重置参数为预设默认 + 切回市场模式
   useEffect(() => {
-    if (preset) setParamValues(Object.fromEntries(preset.params.map((p) => [p.key, p.value])))
-    setScreenMode('market')
+    if (preset) {
+      const defaults = Object.fromEntries(preset.params.map((p) => [p.key, p.value]))
+      setParamValues(() => defaults)
+    }
+    setScreenMode(() => 'market')
   }, [preset])
 
   const runScreen = useMemo(() => async () => {
@@ -46,22 +51,20 @@ export function TechnicalScreenView({
         setSelectedName(res[0].name)
       }
     } catch {
-      setCandidates(TECH_CANDIDATES)
+      setCandidates([])
       setScreenMode('screened')
     }
-  }, [strategy, paramValues])
+    // 运行筛选后自动收起抽屉
+    onToggleFilter?.()
+  }, [strategy, paramValues, onToggleFilter])
 
   const clearScreen = () => {
     setScreenMode('market')
   }
 
-  const handleSelectCode = (code: string) => {
+  const handleSelectCode = (code: string, name: string) => {
     setSelectedCode(code)
-    // 从 candidates 或默认 mock 数据中查找名称
-    const found = candidates.find((c) => c.code === code)
-    if (found) {
-      setSelectedName(found.name)
-    }
+    setSelectedName(name)
   }
 
   // 选中股票 → 拉取四周期K线
@@ -89,36 +92,67 @@ export function TechnicalScreenView({
 
   const showScreenedData = screenMode === 'screened' ? candidates : undefined
 
-  return (
-    <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-      <div className="flex min-w-0 flex-col gap-5">
-        <DataRefreshProgress status={refreshStatus} category="technical" />
-        <TechnicalFilterCard
-          preset={preset}
-          paramValues={paramValues}
-          onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
-          onApply={runScreen}
-        />
-        <StockListCard
-          screenedData={showScreenedData}
-          selectedCode={selectedCode}
-          onSelectCode={handleSelectCode}
-          onClearScreen={clearScreen}
-        />
-      </div>
+  // 点击抽屉外区域收起
+  const drawerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!filterOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+        onToggleFilter?.()
+      }
+    }
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [filterOpen, onToggleFilter])
 
-      <div className="min-w-0">
-        <Card>
-          <CardContent className="pt-5">
-            <PriceChart
-              stockName={selectedName}
-              klineDay={kline.day} klineWeek={kline.week}
-              klineMonth={kline.month} klineQuarter={kline.quarter}
-              highLine={highLine} highLabel={highLabel}
+  return (
+    <div className="flex flex-1 overflow-hidden">
+      {/* 筛选抽屉 */}
+      {filterOpen && (
+        <div ref={drawerRef} className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper/40 px-3 py-5">
+          <TechnicalFilterCard
+            preset={preset}
+            paramValues={paramValues}
+            onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
+            onApply={runScreen}
+          />
+        </div>
+      )}
+
+      {/* 主内容区 */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-1 gap-5 overflow-y-auto p-6">
+          <div className="flex min-w-0 flex-1 flex-col gap-5">
+            <StockListCard
+              screenedData={showScreenedData}
+              selectedCode={selectedCode}
+              onSelectCode={handleSelectCode}
+              onClearScreen={clearScreen}
+              onFirstLoad={(code, name) => {
+                setSelectedCode(code)
+                setSelectedName(name)
+              }}
             />
-          </CardContent>
-        </Card>
+          </div>
+          <div className="min-w-0 flex-1">
+            <Card>
+              <CardContent className="pt-5">
+                <PriceChart
+                  stockName={selectedName}
+                  klineDay={kline.day} klineWeek={kline.week}
+                  klineMonth={kline.month} klineQuarter={kline.quarter}
+                  highLine={highLine} highLabel={highLabel}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   )
 }

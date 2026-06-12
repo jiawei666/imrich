@@ -4,7 +4,6 @@ import { StrategySidebar } from '@/components/layout/StrategySidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { FilterPanel, type FilterState } from '@/components/screener/FilterPanel'
 import { CandidateResults } from '@/components/screener/CandidateResults'
-import { DataRefreshProgress } from '@/components/screener/DataRefreshProgress'
 import { StockDetailPanel } from '@/components/detail/StockDetailPanel'
 import { TechnicalScreenView } from '@/components/technical/TechnicalScreenView'
 import { CANDIDATES, STOCK_DETAIL } from '@/data/mock'
@@ -37,11 +36,17 @@ export default function App() {
   const [stockDetail, setStockDetail] = useState<StockDetail>(STOCK_DETAIL)
   const [loadingCandidates, setLoadingCandidates] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [filterOpen, setFilterOpen] = useState(false)
 
   useEffect(() => {
     api.presets().then(setPresets).catch(() => setPresets([]))
     api.meta().then(setMeta).catch(() => setMeta(undefined))
   }, [])
+
+  const handleStrategyChange = (s: StrategyId) => {
+    setStrategy(s)
+    setFilterOpen(false)
+  }
 
   const isTechnical = STRATEGY_CATEGORY[strategy] === 'technical'
   const activePreset = presets.find((p) => p.id === strategy) ?? null
@@ -103,21 +108,22 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-cream text-ink">
       <Sidebar />
-      <StrategySidebar strategy={strategy} onSelect={setStrategy} />
+      <StrategySidebar strategy={strategy} onSelect={handleStrategyChange} filterOpen={filterOpen} onToggleFilter={() => setFilterOpen(v => !v)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           updatedAt={updatedAt}
+          strategy={strategy}
+          refreshStatus={refreshStatus}
           onRefreshKline={triggerRefreshKline}
           onRefreshFundamental={triggerRefreshFundamental}
         />
 
         {isTechnical ? (
-          <TechnicalScreenView strategy={strategy} preset={activePreset} refreshStatus={refreshStatus} />
+          <TechnicalScreenView strategy={strategy} preset={activePreset} refreshStatus={refreshStatus} filterOpen={filterOpen} onToggleFilter={() => setFilterOpen(v => !v)} />
         ) : (
           <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
             <div className="flex min-w-0 flex-col gap-5">
-              <DataRefreshProgress status={refreshStatus} category="fundamental" />
               <FilterPanel
                 strategy={strategy}
                 state={filter}

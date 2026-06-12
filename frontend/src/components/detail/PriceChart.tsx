@@ -20,37 +20,56 @@ const PERIODS: { key: KlineTimeframe; label: string }[] = [
 
 const INITIAL_SHOW: Record<KlineTimeframe, number> = { day: 60, week: 52, month: 36, quarter: 20 }
 
-// 自定义 tooltip formatter：中文化 + KDJ 放最下面
 function tooltipFormatter(params: any[]) {
   if (!params || params.length === 0) return ''
   const date = params[0]?.axisValue ?? ''
-  let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`
 
-  // K线数据（candlestick）或收盘线
   const kline = params.find((p: any) => p.seriesName === 'K线' || p.seriesName === '收盘')
+  let isUp = true
+  let closePrice = ''
+  const fields: string[] = []
+
   if (kline && Array.isArray(kline.data)) {
-    html += `开盘: ${kline.data[0]}<br/>收盘: ${kline.data[1]}<br/>最低: ${kline.data[2]}<br/>最高: ${kline.data[3]}<br/>`
+    isUp = kline.data[1] >= kline.data[0]
+    closePrice = String(kline.data[1])
+    fields.push(`<span style="color:#8b96a1">开盘:</span> ${kline.data[0]}`)
+    fields.push(`<span style="color:#8b96a1">最低:</span> ${kline.data[2]}`)
+    fields.push(`<span style="color:#8b96a1">最高:</span> ${kline.data[3]}`)
   } else if (kline && kline.data != null) {
-    html += `收盘: ${kline.data}<br/>`
+    isUp = true
+    closePrice = String(kline.data)
+    fields.push(`<span style="color:#8b96a1">收盘:</span> ${kline.data}`)
   }
 
-  // 白线黄线
+  const closeColor = isUp ? '#c0392b' : '#2f8f6f'
+
+  const vol = params.find((p: any) => p.seriesName === '成交量')
+  if (vol?.data != null) {
+    const volVal = typeof vol.data === 'object' && vol.data.value != null ? vol.data.value : vol.data
+    if (volVal !== 0 && volVal !== '-') {
+      fields.push(`<span style="color:#6b7fa3">成交量:</span> ${volVal}`)
+    }
+  }
+
   const white = params.find((p: any) => p.seriesName === '白线')
   const yellow = params.find((p: any) => p.seriesName === '黄线')
-  if (white?.data != null) html += `白线: ${white.data}<br/>`
-  if (yellow?.data != null) html += `黄线: ${yellow.data}<br/>`
+  if (white?.data != null) fields.push(`<span style="color:#2b6cb0">白线:</span> ${white.data}`)
+  if (yellow?.data != null) fields.push(`<span style="color:#c79a3a">黄线:</span> ${yellow.data}`)
 
-  // KDJ 放最下面一行
-  const k = params.find((p: any) => p.seriesName === 'K')
-  const d = params.find((p: any) => p.seriesName === 'D')
   const j = params.find((p: any) => p.seriesName === 'J')
-  if (k || d || j) {
-    html += `<div style="margin-top:4px;padding-top:4px;border-top:1px solid #e9e0c9">`
-    html += `KDJ: K=${k?.data ?? '-'} D=${d?.data ?? '-'} J=${j?.data ?? '-'}`
-    html += `</div>`
+  let jHtml = ''
+  if (j?.data != null) {
+    jHtml = `<div style="margin-top:4px;padding-top:4px;border-top:1px solid #e9e0c9">
+      <span style="color:#c0392b">J:</span> ${j.data}</div>`
   }
 
-  return html
+  return `<div style="position:relative;min-width:140px">
+    <div style="font-weight:600;margin-bottom:4px">${date}
+      <span style="float:right;font-size:16px;font-weight:700;color:${closeColor}">${closePrice}</span>
+    </div>
+    ${fields.join('<br/>')}
+    ${jHtml}
+  </div>`
 }
 
 function ChartBody({
@@ -72,7 +91,6 @@ function ChartBody({
   const [asLine, setAsLine] = useState(asLineRef.current)
   const chartRef = useRef<ReactECharts>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null)
 
   const handleDataZoom = (params: { start?: number; end?: number; batch?: { start?: number; end?: number }[] }) => {
     const p = params.batch?.[0] ?? params
@@ -109,32 +127,8 @@ function ChartBody({
     return () => el.removeEventListener('wheel', onWheel, { capture: true })
   }, [])
 
-  // 点击K线固定/取消 tooltip
-  const pinnedRef = useRef<number | null>(null)
-  useEffect(() => {
-    const chart = chartRef.current?.getEchartsInstance()
-    if (!chart) return
-    const onClick = (params: any) => {
-      if (params.componentType === 'series') {
-        if (pinnedRef.current === params.dataIndex) {
-          // 再次点击同一位置：取消固定
-          pinnedRef.current = null
-          setPinnedIndex(null)
-        } else {
-          pinnedRef.current = params.dataIndex
-          setPinnedIndex(params.dataIndex)
-        }
-      } else {
-        // 点击空白区域取消
-        pinnedRef.current = null
-        setPinnedIndex(null)
-      }
-    }
-    chart.on('click', onClick)
-    return () => { chart.off('click', onClick) }
-  }, [])
-
   const hasKdj = data.some((d) => d.j != null)
+  const hasVolume = data.some((d) => d.volume != null && d.volume > 0)
 
   const markLine = {
     symbol: 'none',
@@ -166,13 +160,24 @@ function ChartBody({
       smooth: true, symbol: 'none', lineStyle: { color: YELLOW_LINE, width: 1 }, connectNulls: true },
   ]
 
+  // 成交量系列
+  const volumeSeries = hasVolume
+    ? [{
+        type: 'bar' as const,
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        name: '成交量',
+        data: data.map((d) => ({
+          value: d.volume ?? 0,
+          itemStyle: { color: d.close >= d.open ? 'rgba(192,57,43,0.6)' : 'rgba(47,143,111,0.6)' },
+        })),
+      }]
+    : []
+
+  // KDJ 只显示 J 线
   const kdjSeries = hasKdj
     ? [
-        { type: 'line' as const, xAxisIndex: 1, yAxisIndex: 1, name: 'K', data: data.map((d) => d.k ?? null),
-          symbol: 'none', lineStyle: { color: '#5b8def', width: 1 }, connectNulls: true },
-        { type: 'line' as const, xAxisIndex: 1, yAxisIndex: 1, name: 'D', data: data.map((d) => d.d ?? null),
-          symbol: 'none', lineStyle: { color: '#c79a3a', width: 1 }, connectNulls: true },
-        { type: 'line' as const, xAxisIndex: 1, yAxisIndex: 1, name: 'J', data: data.map((d) => d.j ?? null),
+        { type: 'line' as const, xAxisIndex: 2, yAxisIndex: 2, name: 'J', data: data.map((d) => d.j ?? null),
           symbol: 'none', lineStyle: { color: '#c0392b', width: 1 }, connectNulls: true },
       ]
     : []
@@ -185,17 +190,132 @@ function ChartBody({
     axisTick: { show: false },
   }
 
+  // x轴间隔：加大间隔避免密集
+  const labelInterval = Math.max(Math.floor(data.length / 8), 0)
+
+  // grid 配置：三区域（K线 + 成交量 + KDJ）
+  const gridConfigs = () => {
+    if (hasKdj && hasVolume) {
+      return [
+        { left: 8, right: 12, top: 28, height: '42%', containLabel: true },
+        { left: 8, right: 12, top: '54%', height: '14%', containLabel: true },
+        { left: 8, right: 12, top: '74%', height: '14%', containLabel: true },
+      ]
+    }
+    if (hasVolume) {
+      return [
+        { left: 8, right: 12, top: 28, height: '50%', containLabel: true },
+        { left: 8, right: 12, top: '66%', height: '18%', containLabel: true },
+      ]
+    }
+    if (hasKdj) {
+      return [
+        { left: 8, right: 12, top: 28, height: '58%', containLabel: true },
+        { left: 8, right: 12, top: '74%', height: '18%', containLabel: true },
+      ]
+    }
+    return [{ left: 8, right: 12, top: 28, bottom: 20, containLabel: true }]
+  }
+
+  // xAxis 配置
+  const xAxisConfigs = () => {
+    const bottomAxis = {
+      ...xCommon,
+      axisLabel: { color: INK_SOFT, fontSize: 10, formatter: (v: string) => v.slice(0, 7), interval: labelInterval },
+    }
+    const hiddenAxis = { ...xCommon, axisLabel: { show: false } }
+
+    if (hasKdj && hasVolume) {
+      return [
+        { ...hiddenAxis, gridIndex: 0 },
+        { ...hiddenAxis, gridIndex: 1 },
+        { ...bottomAxis, gridIndex: 2 },
+      ]
+    }
+    if (hasVolume) {
+      return [
+        { ...hiddenAxis, gridIndex: 0 },
+        { ...bottomAxis, gridIndex: 1 },
+      ]
+    }
+    if (hasKdj) {
+      return [
+        { ...hiddenAxis, gridIndex: 0 },
+        { ...bottomAxis, gridIndex: 1 },
+      ]
+    }
+    return [{ ...bottomAxis, gridIndex: 0 }]
+  }
+
+  // yAxis 配置
+  const yAxisConfigs = () => {
+    const priceAxis = {
+      scale: true, position: 'right', splitLine: { lineStyle: { color: '#f0e8d4' } },
+      axisLabel: { color: INK_SOFT, fontSize: 10 },
+    }
+    const volumeAxis = {
+      position: 'right', splitNumber: 2, splitLine: { show: false },
+      axisLabel: { color: INK_SOFT, fontSize: 10,
+        formatter: (v: number) => v >= 10000 ? `${(v/10000).toFixed(0)}万` : String(Math.round(v)) },
+    }
+    const kdjAxis = {
+      scale: true, position: 'right', splitNumber: 2,
+      splitLine: { lineStyle: { color: '#f0e8d4' } },
+      axisLabel: { color: INK_SOFT, fontSize: 10 },
+    }
+
+    if (hasKdj && hasVolume) {
+      return [
+        { ...priceAxis, gridIndex: 0 },
+        { ...volumeAxis, gridIndex: 1 },
+        { ...kdjAxis, gridIndex: 2 },
+      ]
+    }
+    if (hasVolume) {
+      return [
+        { ...priceAxis, gridIndex: 0 },
+        { ...volumeAxis, gridIndex: 1 },
+      ]
+    }
+    if (hasKdj) {
+      return [
+        { ...priceAxis, gridIndex: 0 },
+        { ...kdjAxis, gridIndex: 1 },
+      ]
+    }
+    return [{ ...priceAxis, gridIndex: 0 }]
+  }
+
+  // 确定受 dataZoom 控制的 xAxis 索引
+  const zoomXAxisIndices = () => {
+    if (hasKdj && hasVolume) return [0, 1, 2]
+    if (hasVolume || hasKdj) return [0, 1]
+    return [0]
+  }
+
+  // legend 数据
+  const legendData = () => {
+    const items = ['白线', '黄线']
+    if (hasVolume) items.push('成交量')
+    if (hasKdj) items.push('J')
+    return items
+  }
+
+  // 图表高度
+  const chartHeight = () => {
+    if (hasKdj && hasVolume) return 440
+    if (hasVolume || hasKdj) return 360
+    return 260
+  }
+
   const option: EChartsOption = {
     animation: false,
     legend: { show: true, top: 0, right: 8, textStyle: { color: INK_SOFT, fontSize: 10 },
-      data: hasKdj ? ['白线', '黄线', 'K', 'D', 'J'] : ['白线', '黄线'] },
-    grid: hasKdj
-      ? [{ left: 8, right: 12, top: 28, height: '58%', containLabel: true },
-         { left: 8, right: 12, top: '74%', height: '18%', containLabel: true }]
-      : [{ left: 8, right: 12, top: 28, bottom: 20, containLabel: true }],
+      data: legendData() },
+    grid: gridConfigs() as any,
     tooltip: {
       trigger: 'axis',
-      triggerOn: 'mousemove|click',
+      triggerOn: 'mousemove',
       axisPointer: { type: asLine ? 'line' : 'cross' },
       backgroundColor: '#fffdf7',
       borderColor: '#e9e0c9',
@@ -203,26 +323,17 @@ function ChartBody({
       formatter: tooltipFormatter as any,
     },
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
-    dataZoom: [{ type: 'inside', xAxisIndex: hasKdj ? [0, 1] : [0],
+    dataZoom: [{ type: 'inside', xAxisIndex: zoomXAxisIndices(),
       start: zoomRef.current.start, end: zoomRef.current.end,
       zoomOnMouseWheel: true, moveOnMouseMove: true }],
-    xAxis: hasKdj
-      ? [{ ...xCommon, axisLabel: { show: false }, gridIndex: 0 },
-         { ...xCommon, gridIndex: 1, axisLabel: { color: INK_SOFT, fontSize: 10, formatter: (v: string) => v.slice(0, 7) } }]
-      : [{ ...xCommon, axisLabel: { color: INK_SOFT, fontSize: 10, formatter: (v: string) => v.slice(0, 7), interval: 'auto' } }],
-    yAxis: hasKdj
-      ? [{ scale: true, position: 'right', gridIndex: 0, splitLine: { lineStyle: { color: '#f0e8d4' } },
-           axisLabel: { color: INK_SOFT, fontSize: 10 } },
-         { scale: true, position: 'right', gridIndex: 1, splitNumber: 2, splitLine: { lineStyle: { color: '#f0e8d4' } },
-           axisLabel: { color: INK_SOFT, fontSize: 10 } }]
-      : [{ scale: true, position: 'right', splitLine: { lineStyle: { color: '#f0e8d4' } },
-           axisLabel: { color: INK_SOFT, fontSize: 10 } }],
-    series: [...priceSeries, ...overlaySeries, ...kdjSeries],
+    xAxis: xAxisConfigs() as any,
+    yAxis: yAxisConfigs() as any,
+    series: [...priceSeries, ...overlaySeries, ...volumeSeries, ...kdjSeries],
   }
 
   return (
     <div ref={containerRef}>
-      <ReactECharts ref={chartRef} option={option} style={{ height: hasKdj ? 360 : 260 }}
+      <ReactECharts ref={chartRef} option={option} style={{ height: chartHeight() }}
         notMerge onEvents={{ datazoom: handleDataZoom }} />
     </div>
   )

@@ -6,6 +6,7 @@ import type {
   StockDetail,
   StockKlineResponse,
   StockListResponse,
+  StockSearchItem,
   TechnicalCandidate,
   KlineTimeframe,
 } from '@/types'
@@ -64,4 +65,6 @@ export const api = {
     const q = qs.toString()
     return get<StockListResponse>(`/stocks${q ? `?${q}` : ''}`)
   },
+  searchStocks: (q: string) =>
+    get<{ data: StockSearchItem[] }>(`/stocks/search?q=${encodeURIComponent(q)}`),
 }

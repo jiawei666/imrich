@@ -23,6 +23,7 @@ class KlinePoint(BaseModel):
     close: float
     high: float
     low: float
+    volume: Optional[float] = None
     k: Optional[float] = None
     d: Optional[float] = None
     j: Optional[float] = None
@@ -45,6 +46,8 @@ class StockListItem(BaseModel):
     is_bj: bool = False
     listed_at: Optional[str] = None
     updated_at: Optional[str] = None
+    close: Optional[float] = None
+    pct_chg: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -54,3 +57,14 @@ class StockListResponse(BaseModel):
     page: int
     pageSize: int
     data: List[StockListItem]
+
+
+class StockSearchItem(BaseModel):
+    code: str
+    name: str
+    close: Optional[float] = None
+    pct_chg: Optional[float] = None
+
+
+class StockSearchResponse(BaseModel):
+    data: List[StockSearchItem]

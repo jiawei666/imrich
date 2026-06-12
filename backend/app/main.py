@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from app.db import init_db
 from app import refresh
 from app.data.fetch_research import download_pdf, fetch_research_metadata, parse_pdf_text
-from app.schemas import StockListResponse, StockListItem
+from app.schemas import StockListResponse, StockListItem, StockSearchItem, StockSearchResponse
 from app.presets import get_presets
 from app.screen import run_screen
 from app.kline_service import get_stock_kline
@@ -130,6 +130,44 @@ def stock_detail(code: str):
     return get_stock_detail(code)
 
 
+@app.get("/stocks/search", response_model=StockSearchResponse)
+def stock_search(q: str = Query(..., min_length=1)):
+    from app.db import SessionLocal
+    from app.models import Stock, KlineDay
+
+    with SessionLocal() as s:
+        rows = (s.query(Stock)
+                .filter(Stock.delisted_at.is_(None),
+                        (Stock.code.contains(q)) | (Stock.name.contains(q)))
+                .limit(20)
+                .all())
+
+        # 获取最新收盘价
+        codes = [r.code for r in rows]
+        latest_close: dict[str, float] = {}
+        if codes:
+            kline_rows = (s.query(KlineDay.code, KlineDay.close)
+                          .filter(KlineDay.code.in_(codes))
+                          .order_by(KlineDay.code, KlineDay.date.desc())
+                          .all())
+            seen: set[str] = set()
+            for kr in kline_rows:
+                if kr.code not in seen:
+                    seen.add(kr.code)
+                    latest_close[kr.code] = kr.close
+
+        items = []
+        for r in rows:
+            items.append(StockSearchItem(
+                code=r.code,
+                name=r.name,
+                close=round(latest_close[r.code], 2) if r.code in latest_close else None,
+                pct_chg=None,
+            ))
+
+    return StockSearchResponse(data=items)
+
+
 @app.get("/stocks", response_model=StockListResponse)
 def stock_list(
     page: int = Query(1, ge=1),
@@ -138,7 +176,7 @@ def stock_list(
     sort_order: str = Query("asc", pattern=r"^(asc|desc)$"),
 ):
     from app.db import SessionLocal
-    from app.models import Stock
+    from app.models import Stock, KlineDay
     from sqlalchemy import desc as sa_desc
 
     with SessionLocal() as s:
@@ -153,9 +191,38 @@ def stock_list(
 
         rows = base_q.order_by(sort_col).offset((page - 1) * page_size).limit(page_size).all()
 
+        # 获取这些股票的最新日K收盘价和前一日收盘价
+        codes = [r.code for r in rows]
+        latest_close: dict[str, float] = {}
+        pct_chg_map: dict[str, float] = {}
+        if codes:
+            # 查询所有相关K线，按日期倒序
+            kline_rows = (s.query(KlineDay.code, KlineDay.close, KlineDay.date)
+                          .filter(KlineDay.code.in_(codes))
+                          .order_by(KlineDay.code, KlineDay.date.desc())
+                          .all())
+            # 每只股票取最新两条
+            per_code: dict[str, list] = {}
+            for kr in kline_rows:
+                per_code.setdefault(kr.code, []).append(kr)
+            for code, krs in per_code.items():
+                if krs:
+                    latest_close[code] = krs[0].close
+                if len(krs) >= 2 and krs[1].close and krs[1].close > 0:
+                    pct_chg_map[code] = round((krs[0].close - krs[1].close) / krs[1].close * 100, 2)
+
+        items = []
+        for r in rows:
+            item = StockListItem.model_validate(r)
+            if r.code in latest_close:
+                item.close = round(latest_close[r.code], 2)
+            if r.code in pct_chg_map:
+                item.pct_chg = pct_chg_map[r.code]
+            items.append(item)
+
     return StockListResponse(
         total=total,
         page=page,
         pageSize=page_size,
-        data=[StockListItem.model_validate(r) for r in rows],
+        data=items,
     )

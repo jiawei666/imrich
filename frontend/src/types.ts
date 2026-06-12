@@ -36,6 +36,7 @@ export interface Kline {
   close: number
   low: number
   high: number
+  volume?: number | null
   k?: number | null
   d?: number | null
   j?: number | null
@@ -167,6 +168,8 @@ export interface StockListItem {
   is_bj: boolean
   listed_at: string | null
   updated_at: string | null
+  close: number | null
+  pct_chg: number | null
 }
 
 export interface StockListResponse {
@@ -178,3 +181,10 @@ export interface StockListResponse {
 
 export type StockSortField = 'code' | 'name' | 'market_cap'
 export type SortOrder = 'asc' | 'desc'
+
+export interface StockSearchItem {
+  code: string
+  name: string
+  close: number | null
+  pct_chg: number | null
+}

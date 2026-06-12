@@ -38,6 +38,7 @@ def get_stock_kline(code: str, period: str) -> Dict[str, Any]:
             "close": round(float(df["close"].iloc[i]), 2),
             "high": round(float(df["high"].iloc[i]), 2),
             "low": round(float(df["low"].iloc[i]), 2),
+            "volume": round(float(df["volume"].iloc[i]), 2) if pd.notna(df["volume"].iloc[i]) else None,
             "k": _round(kdj["K"].iloc[i]),
             "d": _round(kdj["D"].iloc[i]),
             "j": _round(kdj["J"].iloc[i]),
