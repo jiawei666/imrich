@@ -1,7 +1,9 @@
+import asyncio
 import json
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.db import init_db
 from app import refresh
@@ -60,6 +62,23 @@ def refresh_fundamental(background: BackgroundTasks):
 @app.get("/refresh/status")
 def refresh_status():
     return refresh.get_status_snapshot()
+
+
+@app.get("/refresh/status/stream")
+async def refresh_status_stream(request: Request):
+    async def gen():
+        last = None
+        while True:
+            if await request.is_disconnected():
+                break
+            snapshot = refresh.get_status_snapshot()
+            if snapshot != last:
+                yield f"data: {json.dumps(snapshot)}\n\n"
+                last = snapshot
+            else:
+                yield ": ping\n\n"
+            await asyncio.sleep(0.5)
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @app.get("/meta")
