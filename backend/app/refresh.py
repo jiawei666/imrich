@@ -434,8 +434,6 @@ def refresh_research_pdfs(
 
 def get_status_snapshot() -> dict:
     """返回 STATE 的序列化快照，并用数据库实际入库量回填进度。"""
-    from app.db import SessionLocal
-    from app.models import Stock, KlineDay
 
     def _grp(g):
         return {"status": g.status, "updatedAt": g.updatedAt,
