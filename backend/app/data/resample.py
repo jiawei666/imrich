@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-# pandas resample 频率别名：周/月/季末（pandas 2.2+ 使用 "ME"/"QE" 替代已弃用的 "M"/"Q"）
-_RULE = {"week": "W", "month": "ME", "quarter": "QE"}
+# pandas resample 频率别名：周/月/季末（pandas < 2.2 使用 "M"/"Q"）
+_RULE = {"week": "W", "month": "M", "quarter": "Q"}
 
 
 def resample_ohlcv(daily: pd.DataFrame, period: str) -> pd.DataFrame:

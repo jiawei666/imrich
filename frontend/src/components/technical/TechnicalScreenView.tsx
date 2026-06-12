@@ -3,12 +3,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { DataRefreshProgress } from '@/components/screener/DataRefreshProgress'
 import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
-import { TechnicalCandidateList } from './TechnicalCandidateList'
+import { TechnicalFilterCard } from './TechnicalFilterCard'
 import { api } from '@/lib/api'
 import { TECH_CANDIDATES } from '@/data/mock'
 import type { Kline, KlineTimeframe, Preset, RefreshStatus, StrategyId, TechnicalCandidate } from '@/types'
 
 const EMPTY_KLINE: Record<KlineTimeframe, Kline[]> = { day: [], week: [], month: [], quarter: [] }
+
+type ScreenMode = 'market' | 'screened'
 
 export function TechnicalScreenView({
   strategy,
@@ -22,24 +24,45 @@ export function TechnicalScreenView({
   const [paramValues, setParamValues] = useState<Record<string, number>>({})
   const [candidates, setCandidates] = useState<TechnicalCandidate[]>(TECH_CANDIDATES)
   const [selectedCode, setSelectedCode] = useState<string>(TECH_CANDIDATES[0]?.code ?? '')
+  const [selectedName, setSelectedName] = useState<string>(TECH_CANDIDATES[0]?.name ?? '')
+  const [screenMode, setScreenMode] = useState<ScreenMode>('market')
   const [kline, setKline] = useState<Record<KlineTimeframe, Kline[]>>(EMPTY_KLINE)
   const [highLine, setHighLine] = useState(0)
   const [highLabel, setHighLabel] = useState('历史高点')
 
-  // 切换策略时重置参数为预设默认
+  // 切换策略时重置参数为预设默认 + 切回市场模式
   useEffect(() => {
     if (preset) setParamValues(Object.fromEntries(preset.params.map((p) => [p.key, p.value])))
+    setScreenMode('market')
   }, [preset])
 
   const runScreen = useMemo(() => async () => {
     try {
       const res = await api.screenTechnical(strategy, paramValues)
       setCandidates(res)
-      if (res[0]) setSelectedCode(res[0].code)
+      setScreenMode('screened')
+      if (res[0]) {
+        setSelectedCode(res[0].code)
+        setSelectedName(res[0].name)
+      }
     } catch {
       setCandidates(TECH_CANDIDATES)
+      setScreenMode('screened')
     }
   }, [strategy, paramValues])
+
+  const clearScreen = () => {
+    setScreenMode('market')
+  }
+
+  const handleSelectCode = (code: string) => {
+    setSelectedCode(code)
+    // 从 candidates 或默认 mock 数据中查找名称
+    const found = candidates.find((c) => c.code === code)
+    if (found) {
+      setSelectedName(found.name)
+    }
+  }
 
   // 选中股票 → 拉取四周期K线
   useEffect(() => {
@@ -64,19 +87,23 @@ export function TechnicalScreenView({
     return () => { cancelled = true }
   }, [selectedCode])
 
+  const showScreenedData = screenMode === 'screened' ? candidates : undefined
+
   return (
     <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <div className="flex min-w-0 flex-col gap-5">
         <DataRefreshProgress status={refreshStatus} category="technical" />
-        <StockListCard />
-        <TechnicalCandidateList
+        <TechnicalFilterCard
           preset={preset}
           paramValues={paramValues}
           onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
           onApply={runScreen}
-          candidates={candidates}
+        />
+        <StockListCard
+          screenedData={showScreenedData}
           selectedCode={selectedCode}
-          onSelect={setSelectedCode}
+          onSelectCode={handleSelectCode}
+          onClearScreen={clearScreen}
         />
       </div>
 
@@ -84,6 +111,7 @@ export function TechnicalScreenView({
         <Card>
           <CardContent className="pt-5">
             <PriceChart
+              stockName={selectedName}
               klineDay={kline.day} klineWeek={kline.week}
               klineMonth={kline.month} klineQuarter={kline.quarter}
               highLine={highLine} highLabel={highLabel}

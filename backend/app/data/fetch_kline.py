@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import pandas as pd
 import requests
@@ -43,11 +43,14 @@ def _truncate(text: str, max_len: int = 200) -> str:
     return text[:max_len] + "..." if len(text) > max_len else text
 
 
-def fetch_sina_spot() -> pd.DataFrame:
+def fetch_sina_spot(progress_callback: Optional[Callable[[int, int], None]] = None) -> pd.DataFrame:
     """直接调新浪接口获取全市场 A 股实时行情（含市值）。
 
     返回列：代码, 名称, 总市值(万元), 最新价, 涨跌幅, 成交量, 成交额
     不依赖 akshare 封装，保留 mktcap 字段。
+
+    Args:
+        progress_callback: 可选回调，每抓完一页调用 callback(current_page, total_pages)。
     """
     page_count = _get_sina_page_count()
     big_df = pd.DataFrame()
@@ -79,6 +82,9 @@ def fetch_sina_spot() -> pd.DataFrame:
 
         page_df = pd.DataFrame(data)
         big_df = pd.concat([big_df, page_df], ignore_index=True)
+
+        if progress_callback is not None:
+            progress_callback(page, page_count)
 
         # 简单限速，避免被封
         if page < page_count:
@@ -163,13 +169,16 @@ def get_kline_ak_tx(code: str, start: str, end: str, adjust: str = "qfq") -> pd.
 
 # ---- 股票列表 ---- #
 
-def get_constituents(min_cap: float) -> List[dict]:
+def get_constituents(min_cap: float, progress_callback: Optional[Callable[[int, int], None]] = None) -> List[dict]:
     """按总市值筛全市场A股，返回 [{code(带前缀), name, market_cap(亿)}]。
 
     min_cap 单位为元；market_cap 字段单位为亿元。
     使用新浪接口获取股票列表+市值，腾讯接口获取K线，与旧项目 akshare_tx 数据源一致。
+
+    Args:
+        progress_callback: 可选回调，透传给 fetch_sina_spot，每抓完一页调用。
     """
-    df = fetch_sina_spot()
+    df = fetch_sina_spot(progress_callback=progress_callback)
     # 新浪 mktcap 单位是万元，转换为亿元
     df["market_cap_yi"] = df["总市值"] / 10000
     # 按市值过滤（min_cap 单位为元，即 /1e8 = 亿元）

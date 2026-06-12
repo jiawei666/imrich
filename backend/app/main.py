@@ -18,9 +18,20 @@ from app.meta import get_meta
 
 app = FastAPI(title="i'mRich 选股器")
 
+# 跟踪异步任务，便于关闭时取消
+_refresh_tasks: "set[asyncio.Task]" = set()
+
+
+@app.on_event("shutdown")
+def _shutdown():
+    """通知正在运行的同步刷新任务退出，然后取消异步任务。"""
+    refresh.request_cancel()
+    for t in list(_refresh_tasks):
+        t.cancel()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -42,20 +53,28 @@ def presets():
 
 
 @app.post("/refresh/kline", status_code=202)
-def refresh_kline(background: BackgroundTasks, reload_stock_list: bool = Query(True)):
-    background.add_task(refresh.run_kline_refresh, reload_stock_list=reload_stock_list)
+async def refresh_kline(reload_stock_list: bool = Query(True)):
+    t = asyncio.create_task(
+        asyncio.to_thread(refresh.run_kline_refresh, reload_stock_list=reload_stock_list)
+    )
+    _refresh_tasks.add(t)
+    t.add_done_callback(_refresh_tasks.discard)
     return {"status": "accepted"}
 
 
 @app.post("/refresh/fundamental", status_code=202)
-def refresh_fundamental(background: BackgroundTasks):
-    background.add_task(
-        refresh.run_fundamental_refresh,
-        research_meta_fn=fetch_research_metadata,
-        candidate_screen_fn=run_fundamental_screen,
-        research_download_fn=download_pdf,
-        research_parse_fn=parse_pdf_text,
+async def refresh_fundamental():
+    t = asyncio.create_task(
+        asyncio.to_thread(
+            refresh.run_fundamental_refresh,
+            research_meta_fn=fetch_research_metadata,
+            candidate_screen_fn=run_fundamental_screen,
+            research_download_fn=download_pdf,
+            research_parse_fn=parse_pdf_text,
+        )
     )
+    _refresh_tasks.add(t)
+    t.add_done_callback(_refresh_tasks.discard)
     return {"status": "accepted"}
 
 

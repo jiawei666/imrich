@@ -20,8 +20,44 @@ const PERIODS: { key: KlineTimeframe; label: string }[] = [
 
 const INITIAL_SHOW: Record<KlineTimeframe, number> = { day: 60, week: 52, month: 36, quarter: 20 }
 
+// 自定义 tooltip formatter：中文化 + KDJ 放最下面
+function tooltipFormatter(params: any[]) {
+  if (!params || params.length === 0) return ''
+  const date = params[0]?.axisValue ?? ''
+  let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`
+
+  // K线数据（candlestick）或收盘线
+  const kline = params.find((p: any) => p.seriesName === 'K线' || p.seriesName === '收盘')
+  if (kline && Array.isArray(kline.data)) {
+    html += `开盘: ${kline.data[0]}<br/>收盘: ${kline.data[1]}<br/>最低: ${kline.data[2]}<br/>最高: ${kline.data[3]}<br/>`
+  } else if (kline && kline.data != null) {
+    html += `收盘: ${kline.data}<br/>`
+  }
+
+  // 白线黄线
+  const white = params.find((p: any) => p.seriesName === '白线')
+  const yellow = params.find((p: any) => p.seriesName === '黄线')
+  if (white?.data != null) html += `白线: ${white.data}<br/>`
+  if (yellow?.data != null) html += `黄线: ${yellow.data}<br/>`
+
+  // KDJ 放最下面一行
+  const k = params.find((p: any) => p.seriesName === 'K')
+  const d = params.find((p: any) => p.seriesName === 'D')
+  const j = params.find((p: any) => p.seriesName === 'J')
+  if (k || d || j) {
+    html += `<div style="margin-top:4px;padding-top:4px;border-top:1px solid #e9e0c9">`
+    html += `KDJ: K=${k?.data ?? '-'} D=${d?.data ?? '-'} J=${j?.data ?? '-'}`
+    html += `</div>`
+  }
+
+  return html
+}
+
 function ChartBody({
-  data, period, highLine, highLabel,
+  data,
+  period,
+  highLine,
+  highLabel,
 }: {
   data: Kline[]
   period: KlineTimeframe
@@ -36,6 +72,7 @@ function ChartBody({
   const [asLine, setAsLine] = useState(asLineRef.current)
   const chartRef = useRef<ReactECharts>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null)
 
   const handleDataZoom = (params: { start?: number; end?: number; batch?: { start?: number; end?: number }[] }) => {
     const p = params.batch?.[0] ?? params
@@ -50,6 +87,7 @@ function ChartBody({
     }
   }
 
+  // 水平滚轮缩放
   useEffect(() => {
     const el = containerRef.current
     const chart = chartRef.current?.getEchartsInstance()
@@ -69,6 +107,31 @@ function ChartBody({
     }
     el.addEventListener('wheel', onWheel, { passive: false, capture: true })
     return () => el.removeEventListener('wheel', onWheel, { capture: true })
+  }, [])
+
+  // 点击K线固定/取消 tooltip
+  const pinnedRef = useRef<number | null>(null)
+  useEffect(() => {
+    const chart = chartRef.current?.getEchartsInstance()
+    if (!chart) return
+    const onClick = (params: any) => {
+      if (params.componentType === 'series') {
+        if (pinnedRef.current === params.dataIndex) {
+          // 再次点击同一位置：取消固定
+          pinnedRef.current = null
+          setPinnedIndex(null)
+        } else {
+          pinnedRef.current = params.dataIndex
+          setPinnedIndex(params.dataIndex)
+        }
+      } else {
+        // 点击空白区域取消
+        pinnedRef.current = null
+        setPinnedIndex(null)
+      }
+    }
+    chart.on('click', onClick)
+    return () => { chart.off('click', onClick) }
   }, [])
 
   const hasKdj = data.some((d) => d.j != null)
@@ -130,8 +193,15 @@ function ChartBody({
       ? [{ left: 8, right: 12, top: 28, height: '58%', containLabel: true },
          { left: 8, right: 12, top: '74%', height: '18%', containLabel: true }]
       : [{ left: 8, right: 12, top: 28, bottom: 20, containLabel: true }],
-    tooltip: { trigger: 'axis', axisPointer: { type: asLine ? 'line' : 'cross' },
-      backgroundColor: '#fffdf7', borderColor: '#e9e0c9', textStyle: { color: '#2b3a4d', fontSize: 12 } },
+    tooltip: {
+      trigger: 'axis',
+      triggerOn: 'mousemove|click',
+      axisPointer: { type: asLine ? 'line' : 'cross' },
+      backgroundColor: '#fffdf7',
+      borderColor: '#e9e0c9',
+      textStyle: { color: '#2b3a4d', fontSize: 12 },
+      formatter: tooltipFormatter as any,
+    },
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
     dataZoom: [{ type: 'inside', xAxisIndex: hasKdj ? [0, 1] : [0],
       start: zoomRef.current.start, end: zoomRef.current.end,
@@ -159,8 +229,15 @@ function ChartBody({
 }
 
 export function PriceChart({
-  klineDay, klineWeek, klineMonth, klineQuarter, highLine, highLabel,
+  stockName,
+  klineDay,
+  klineWeek,
+  klineMonth,
+  klineQuarter,
+  highLine,
+  highLabel,
 }: {
+  stockName?: string
   klineDay: Kline[]
   klineWeek: Kline[]
   klineMonth: Kline[]
@@ -175,7 +252,7 @@ export function PriceChart({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[15px] font-semibold text-ink">股价走势</span>
+        <span className="text-[15px] font-semibold text-ink">{stockName ?? '股价走势'}</span>
         <Tabs value={period} onValueChange={(v) => setPeriod(v as KlineTimeframe)}>
           <TabsList className="h-7 p-0.5">
             {PERIODS.map(({ key, label }) => (

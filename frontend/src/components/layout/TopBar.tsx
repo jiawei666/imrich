@@ -12,7 +12,7 @@ export function TopBar({
   onRefreshFundamental: () => void
 }) {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-6 border-b border-line bg-cream/80 px-6 backdrop-blur">
+    <header className="relative z-50 flex h-16 shrink-0 items-center gap-6 border-b border-line bg-cream/80 px-6 backdrop-blur">
       <Wordmark className="h-9 w-auto" />
 
       <div className="ml-auto flex items-center gap-3">

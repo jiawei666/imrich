@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Callable, List, Optional
 
 import pandas as pd
+from tqdm import tqdm
 
 from app.db import SessionLocal
 from app.models import (
@@ -54,11 +55,19 @@ def _new_state():
 
 
 STATE = _new_state()
+_cancel_flag = False
+
+
+def request_cancel() -> None:
+    """标记取消，运行中的刷新循环应在下次迭代时退出。"""
+    global _cancel_flag
+    _cancel_flag = True
 
 
 def reset_state() -> None:
-    global STATE
+    global STATE, _cancel_flag
     STATE = _new_state()
+    _cancel_flag = False
 
 
 def _fmt(seconds: float) -> str:
@@ -81,7 +90,8 @@ def run_kline_refresh(
     """
     if constituents_fn is None:
         from app.data.fetch_kline import get_constituents
-        constituents_fn = lambda: get_constituents(DEFAULT_MIN_CAP)
+        # 占位，等 step1 可用后再构建带回调的版本
+        constituents_fn = "default"
     if kline_fn is None:
         from app.data.fetch_kline import get_kline_ak_tx
         kline_fn = lambda code: get_kline_ak_tx(code, "", "")
@@ -93,12 +103,29 @@ def run_kline_refresh(
     try:
         # —— 步骤1：股票列表（可选跳过） ——
         step1 = group.steps[0]
+        if constituents_fn == "default":
+            from app.data.fetch_kline import get_constituents
+            def _on_page(current, total):
+                if total > 0:
+                    step1.total = total
+                    step1.done = current
+                    step1.progress = int(current / total * 100)
+                    step1.elapsed = _fmt(time.time() - started)
+            constituents_fn = lambda: get_constituents(DEFAULT_MIN_CAP, progress_callback=_on_page)
         if reload_stock_list:
             rows = constituents_fn()
+            # 分页抓取阶段已由 progress_callback 更新进度；写入数据库极快，直接标记完成
+            step1.total = step1.done = len(rows)
+            step1.progress = 100
+            step1.elapsed = _fmt(time.time() - started)
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with SessionLocal() as s:
                 current_codes = set()
-                for r in rows:
+                for r in tqdm(rows, desc="股票列表写库"):
+                    if _cancel_flag:
+                        group.status = "done"
+                        group.error = "服务关闭，任务中断"
+                        return
                     current_codes.add(r["code"])
                     obj = s.get(Stock, r["code"])
                     if obj is None:
@@ -113,9 +140,6 @@ def run_kline_refresh(
                     if obj.code not in current_codes and obj.delisted_at is None:
                         obj.delisted_at = now
                 s.commit()
-            step1.total = step1.done = len(rows)
-            step1.progress = 100
-            step1.elapsed = _fmt(time.time() - started)
         else:
             # 跳过股票列表刷新，从数据库读取现有股票
             with SessionLocal() as s:
@@ -129,10 +153,16 @@ def run_kline_refresh(
 
         # —— 步骤2：K线全量重抓 + 重采样 ——
         step2 = group.steps[1]
+        step2.done = 0
+        step2.progress = 0
         active = [r["code"] for r in rows]
         step2.total = len(active)
         t0 = time.time()
-        for i, code in enumerate(active, 1):
+        for i, code in enumerate(tqdm(active, desc="K线数据刷新（日+周+月+季）"), 1):
+            if _cancel_flag:
+                group.status = "done"
+                group.error = "服务关闭，任务中断"
+                return
             df = kline_fn(code)
             with SessionLocal() as s:
                 s.query(KlineDay).filter_by(code=code).delete()
@@ -189,7 +219,7 @@ def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str]
     step.total = len(rows)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with SessionLocal() as s:
-        for i, row in enumerate(rows, 1):
+        for i, row in enumerate(tqdm(rows, desc="财报数据"), 1):
             obj = (
                 s.query(FinancialReport)
                 .filter_by(code=row["code"], report_date=row["report_date"])
@@ -221,7 +251,7 @@ def _refresh_forecasts(
     step.total = len(rows)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with SessionLocal() as s:
-        for i, row in enumerate(rows, 1):
+        for i, row in enumerate(tqdm(rows, desc="业绩预告快报"), 1):
             obj = (
                 s.query(Forecast)
                 .filter_by(code=row["code"], report_date=row["report_date"], source=row["source"])
@@ -257,7 +287,7 @@ def _refresh_industry_index(
     industries = industries_fn()
     step.total = len(industries)
     with SessionLocal() as s:
-        for i, industry in enumerate(industries, 1):
+        for i, industry in enumerate(tqdm(industries, desc="申万行业指数"), 1):
             hist = industry_hist_fn(industry["code"])
             for row in hist.to_dict("records"):
                 obj = (
@@ -379,7 +409,7 @@ def refresh_research_metadata(fetch_fn: Callable[[], list[dict]], group: Optiona
         step.total = len(rows)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with SessionLocal() as s:
-        for i, row in enumerate(rows, 1):
+        for i, row in enumerate(tqdm(rows, desc="研报元数据"), 1):
             obj = s.query(ResearchReport).filter_by(report_id=row["report_id"]).one_or_none()
             if obj is None:
                 obj = ResearchReport(report_id=row["report_id"], code=row["code"], title=row["title"], published_at=row["published_at"], stage="metadata")
@@ -416,7 +446,7 @@ def refresh_research_pdfs(
         )
         if step is not None:
             step.total = len(rows)
-        for i, row in enumerate(rows, 1):
+        for i, row in enumerate(tqdm(rows, desc="研报PDF解析"), 1):
             if not row.pdf_url:
                 continue
             pdf_path = download_fn(row.pdf_url, directory)
@@ -433,28 +463,69 @@ def refresh_research_pdfs(
 
 
 def get_status_snapshot() -> dict:
-    """返回 STATE 的序列化快照，并用数据库实际入库量回填进度。"""
+    """返回 STATE 的序列化快照。
+
+    任务 running 时，内存中的 step 数据即为后台线程写入的实时进度；
+    idle/done/error 时，用数据库实际入库量回填（兜底，避免进程重启后丢失）。
+    """
 
     def _grp(g):
         return {"status": g.status, "updatedAt": g.updatedAt,
-                "error": g.error, "steps": [vars(s) for s in g.steps]}
+                "error": g.error, "steps": [dict(vars(s)) for s in g.steps]}
 
     result = {k: _grp(v) for k, v in STATE.items()}
 
-    with SessionLocal() as s:
-        stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
-        kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
+    # 只在没有活跃任务时用数据库回填进度（兜底，避免进程重启后丢失）
+    if result["kline"]["status"] != "running":
+        with SessionLocal() as s:
+            stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
+            kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
 
-    kline_steps = result["kline"]["steps"]
+        kline_steps = result["kline"]["steps"]
 
-    if stock_count > 0:
-        kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
-        kline_steps[0]["done"] = stock_count
-        kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
+        if stock_count > 0:
+            kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
+            kline_steps[0]["done"] = stock_count
+            kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
 
-    if stock_count > 0:
-        kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
-        kline_steps[1]["done"] = kline_stock_count
-        kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
+        if stock_count > 0:
+            kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
+            kline_steps[1]["done"] = kline_stock_count
+            kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
+
+    if result["fundamental"]["status"] != "running":
+        with SessionLocal() as s:
+            report_count = s.query(FinancialReport).count()
+            forecast_count = s.query(Forecast).count()
+            industry_count = s.query(IndustryIndex).group_by(IndustryIndex.code).count()
+            research_meta_count = s.query(ResearchReport).filter(ResearchReport.stage == "metadata").count()
+            research_parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
+
+        f_steps = result["fundamental"]["steps"]
+
+        if report_count > 0:
+            f_steps[0]["total"] = max(f_steps[0]["total"], report_count)
+            f_steps[0]["done"] = report_count
+            f_steps[0]["progress"] = 100
+
+        if forecast_count > 0:
+            f_steps[1]["total"] = max(f_steps[1]["total"], forecast_count)
+            f_steps[1]["done"] = forecast_count
+            f_steps[1]["progress"] = 100
+
+        if industry_count > 0:
+            f_steps[2]["total"] = max(f_steps[2]["total"], industry_count)
+            f_steps[2]["done"] = industry_count
+            f_steps[2]["progress"] = 100
+
+        if research_meta_count > 0:
+            f_steps[3]["total"] = max(f_steps[3]["total"], research_meta_count)
+            f_steps[3]["done"] = research_meta_count
+            f_steps[3]["progress"] = 100
+
+        if research_parsed_count > 0:
+            f_steps[4]["total"] = max(f_steps[4]["total"], research_parsed_count)
+            f_steps[4]["done"] = research_parsed_count
+            f_steps[4]["progress"] = 100
 
     return result
