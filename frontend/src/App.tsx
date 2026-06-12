@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { StrategySidebar } from '@/components/layout/StrategySidebar'
 import { TopBar } from '@/components/layout/TopBar'
@@ -40,7 +40,6 @@ export default function App() {
 
   useEffect(() => {
     api.presets().then(setPresets).catch(() => setPresets([]))
-    api.refreshStatus().then(setRefreshStatus).catch(() => setRefreshStatus(undefined))
     api.meta().then(setMeta).catch(() => setMeta(undefined))
   }, [])
 
@@ -49,8 +48,6 @@ export default function App() {
   const updatedAt = meta?.klineDay.updatedAt ?? refreshStatus?.kline.updatedAt ?? '—'
 
   const reloadMeta = () => api.meta().then(setMeta).catch(() => setMeta(undefined))
-  const reloadRefreshStatus = () =>
-    api.refreshStatus().then(setRefreshStatus).catch(() => setRefreshStatus(undefined))
 
   const loadFundamental = () => {
     setLoadingCandidates(true)
@@ -78,32 +75,30 @@ export default function App() {
   }, [isTechnical, selectedCode])
 
   const triggerRefreshKline = (reloadStockList: boolean) => {
-    api.refreshKline(reloadStockList).then(() => {
-      reloadRefreshStatus()
-      reloadMeta()
-    }).catch(() => {})
+    api.refreshKline(reloadStockList).catch(() => {})
   }
 
   const triggerRefreshFundamental = () => {
-    api.refreshFundamental().then(() => {
-      reloadRefreshStatus()
-      reloadMeta()
-    }).catch(() => {})
+    api.refreshFundamental().catch(() => {})
   }
 
+  const prevStatusRef = useRef<{ kline?: string; fundamental?: string }>({})
+
   useEffect(() => {
-    if (
-      refreshStatus?.kline.status !== 'running' &&
-      refreshStatus?.fundamental.status !== 'running'
-    ) {
-      return
-    }
-    const id = window.setInterval(() => {
-      reloadRefreshStatus()
-      reloadMeta()
-    }, 3000)
-    return () => window.clearInterval(id)
-  }, [refreshStatus?.fundamental.status, refreshStatus?.kline.status])
+    const close = api.refreshStatusStream((status) => {
+      setRefreshStatus(status)
+      const prev = prevStatusRef.current
+      if (prev.kline === 'running' && status.kline.status !== 'running') {
+        reloadMeta()
+      }
+      if (prev.fundamental === 'running' && status.fundamental.status !== 'running') {
+        reloadMeta()
+      }
+      prev.kline = status.kline.status
+      prev.fundamental = status.fundamental.status
+    })
+    return close
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-cream text-ink">
