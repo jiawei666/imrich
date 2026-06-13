@@ -204,6 +204,19 @@ def screen_result(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/screen/fundamental/result")
+def fundamental_screen_result(preset: str, params: str = Query(default=None)):
+    from app.screen import run_fundamental_screen_result
+    try:
+        parsed = json.loads(params) if params else None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="params 不是合法 JSON")
+    try:
+        return run_fundamental_screen_result(preset, parsed)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/stock/{code}/kline")
 def stock_kline(code: str, period: str = "day"):
     try:

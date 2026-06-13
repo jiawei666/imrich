@@ -205,3 +205,64 @@ def run_screen_result(preset_id: str, params: dict | None = None, history_date: 
         })
 
     return {"items": items, "total": len(items)}
+
+
+def run_fundamental_screen_result(preset_id: str, params: dict | None = None) -> dict:
+    from app.fundamental_screen import run_fundamental_screen
+    from app.models import FundamentalCandidate
+
+    if preset_id not in FUNDAMENTAL_PRESETS:
+        raise KeyError(f"未知基本面预设: {preset_id}")
+
+    if params is None:
+        with SessionLocal() as s:
+            rows = (
+                s.query(FundamentalCandidate)
+                .filter_by(preset_id=preset_id)
+                .order_by(FundamentalCandidate.rank)
+                .all()
+            )
+        items = [
+            {
+                "code": r.code,
+                "name": r.name,
+                "industry": r.industry,
+                "score": r.score,
+                "signals": json.loads(r.signals),
+                "extraSignals": r.extra_signals,
+                "netProfitYoY": r.net_profit_yoy,
+                "revenueYoY": r.revenue_yoy,
+                "risks": json.loads(r.risks),
+                "drawdownFromHigh": r.drawdown_from_high,
+            }
+            for r in rows
+        ]
+        updated_at = max((r.updated_at for r in rows), default=None)
+    else:
+        candidates = run_fundamental_screen(preset_id, params)
+        params_json = json.dumps(params, sort_keys=True)
+        now = datetime.now().isoformat()
+        with SessionLocal() as s:
+            s.query(FundamentalCandidate).filter_by(preset_id=preset_id).delete()
+            for i, c in enumerate(candidates):
+                s.add(FundamentalCandidate(
+                    preset_id=preset_id,
+                    code=c["code"],
+                    name=c["name"],
+                    industry=c["industry"],
+                    score=c["score"],
+                    signals=json.dumps(c["signals"]),
+                    extra_signals=c["extraSignals"],
+                    net_profit_yoy=c["netProfitYoY"],
+                    revenue_yoy=c["revenueYoY"],
+                    drawdown_from_high=c.get("drawdownFromHigh", 0),
+                    risks=json.dumps(c.get("risks", [])),
+                    params_json=params_json,
+                    rank=i + 1,
+                    updated_at=now,
+                ))
+            s.commit()
+        items = candidates
+        updated_at = now
+
+    return {"items": items, "total": len(items), "updatedAt": updated_at}
