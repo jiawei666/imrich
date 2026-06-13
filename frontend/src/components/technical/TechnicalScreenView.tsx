@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StockListCard } from '@/components/screener/StockListCard'
@@ -11,19 +11,19 @@ const EMPTY_KLINE: Record<KlineTimeframe, Kline[]> = { day: [], week: [], month:
 
 type ScreenMode = 'market' | 'screened'
 
-export function TechnicalScreenView({
-  strategy,
-  preset,
-  refreshStatus,
-  filterOpen,
-  onToggleFilter,
-}: {
+export interface TechnicalScreenViewHandle {
+  toggleFilter: () => void
+}
+
+export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   strategy: StrategyId
   preset: Preset | null
   refreshStatus?: RefreshStatus
-  filterOpen?: boolean
-  onToggleFilter?: () => void
-}) {
+}>(function TechnicalScreenView({
+  strategy,
+  preset,
+  refreshStatus,
+}, ref) {
   const [paramValues, setParamValues] = useState<Record<string, number>>({})
   const [candidates, setCandidates] = useState<TechnicalCandidate[]>([])
   const [selectedCode, setSelectedCode] = useState<string>('')
@@ -32,14 +32,21 @@ export function TechnicalScreenView({
   const [kline, setKline] = useState<Record<KlineTimeframe, Kline[]>>(EMPTY_KLINE)
   const [highLine, setHighLine] = useState(0)
   const [highLabel, setHighLabel] = useState('历史高点')
+  const [filterOpen, setFilterOpen] = useState(false)
 
-  // 切换策略时重置参数为预设默认 + 切回市场模式
+  // 暴露 toggleFilter 给父组件（StrategySidebar 的筛选按钮调用）
+  useImperativeHandle(ref, () => ({
+    toggleFilter: () => setFilterOpen((v) => !v),
+  }))
+
+  // 切换策略时重置参数为预设默认 + 切回市场模式 + 关闭抽屉
   useEffect(() => {
     if (preset) {
       const defaults = Object.fromEntries(preset.params.map((p) => [p.key, p.value]))
       setParamValues(() => defaults)
     }
     setScreenMode(() => 'market')
+    setFilterOpen(false)
   }, [preset])
 
   const clearScreen = () => {
@@ -82,23 +89,17 @@ export function TechnicalScreenView({
     if (!filterOpen) return
     const handleClickOutside = (e: MouseEvent) => {
       if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        onToggleFilter?.()
+        setFilterOpen(false)
       }
     }
-    // 延迟绑定，避免打开按钮的 click 事件触发关闭
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside)
-    }, 200)
+    }, 0)
     return () => {
       clearTimeout(timer)
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [filterOpen, onToggleFilter])
-
-  // 明确关闭抽屉的函数（只在 filterOpen=true 时才 toggle）
-  const closeFilter = () => {
-    if (filterOpen) onToggleFilter?.()
-  }
+  }, [filterOpen])
 
   const runScreen = useMemo(() => async () => {
     try {
@@ -113,9 +114,8 @@ export function TechnicalScreenView({
       setCandidates([])
       setScreenMode('screened')
     }
-    // 运行筛选后明确关闭抽屉（不是 toggle）
-    closeFilter()
-  }, [strategy, paramValues, closeFilter])
+    setFilterOpen(false)
+  }, [strategy, paramValues])
 
   return (
     <div className="relative flex flex-1 overflow-hidden">
@@ -128,7 +128,7 @@ export function TechnicalScreenView({
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-medium text-ink-soft">筛选参数</span>
             <button
-              onClick={closeFilter}
+              onClick={() => setFilterOpen(false)}
               className="rounded-md p-1 text-ink-faint hover:bg-paper-2 hover:text-ink-soft"
             >
               <X className="size-3.5" />
@@ -145,7 +145,7 @@ export function TechnicalScreenView({
         </div>
       )}
 
-      {/* 主内容区 — 恢复响应式布局 */}
+      {/* 主内容区 — 响应式布局 */}
       <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <StockListCard
@@ -174,4 +174,4 @@ export function TechnicalScreenView({
       </main>
     </div>
   )
-}
+})

@@ -13,7 +13,7 @@ const TECHNICAL: { id: StrategyId; label: string }[] = [
 ]
 
 function Item({
-  id, label, active, indent, onSelect, showFilter, filterOpen, onToggleFilter,
+  id, label, active, indent, onSelect, showFilter, onFilterClick,
 }: {
   id: StrategyId
   label: string
@@ -21,8 +21,7 @@ function Item({
   indent?: boolean
   onSelect: (s: StrategyId) => void
   showFilter?: boolean
-  filterOpen?: boolean
-  onToggleFilter?: () => void
+  onFilterClick?: () => void
 }) {
   return (
     <div className="flex items-center gap-0.5">
@@ -41,10 +40,10 @@ function Item({
       </button>
       {showFilter && active && (
         <button
-          onClick={(e) => { e.stopPropagation(); onToggleFilter?.() }}
+          onClick={(e) => { e.stopPropagation(); onFilterClick?.() }}
           className={cn(
             'rounded-md p-1.5 transition-colors',
-            filterOpen ? 'bg-brand-soft text-brand' : 'text-ink-faint hover:bg-paper-2 hover:text-ink-soft',
+            'text-ink-faint hover:bg-paper-2 hover:text-ink-soft',
           )}
           title="筛选参数"
         >
@@ -56,12 +55,11 @@ function Item({
 }
 
 export function StrategySidebar({
-  strategy, onSelect, filterOpen, onToggleFilter,
+  strategy, onSelect, onFilterClick,
 }: {
   strategy: StrategyId
   onSelect: (s: StrategyId) => void
-  filterOpen?: boolean
-  onToggleFilter?: () => void
+  onFilterClick?: () => void
 }) {
   const isTechnical = strategy === 'trend-support' || strategy === 'b2'
 
@@ -84,8 +82,7 @@ export function StrategySidebar({
           indent
           onSelect={onSelect}
           showFilter={isTechnical}
-          filterOpen={filterOpen}
-          onToggleFilter={onToggleFilter}
+          onFilterClick={onFilterClick}
         />
       ))}
     </aside>
