@@ -8,7 +8,6 @@ import type {
   StockDetail,
   StockKlineResponse,
   StockListResponse,
-  StockRow,
   StockSearchResponse,
   TechnicalCandidate,
   KlineTimeframe,

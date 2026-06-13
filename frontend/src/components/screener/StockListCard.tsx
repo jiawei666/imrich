@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { StockRow, StockSortField, SortOrder, ScreenSnapshotMeta } from '@/types'
 
-const PAGE_SIZE = 30
-
 interface ListRow {
   code: string
   name: string
