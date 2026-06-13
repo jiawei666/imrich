@@ -190,6 +190,7 @@ def stock_search(
 
 @app.get("/stocks", response_model=StockListResponse)
 def stock_list(
+    q: str = Query(default="", max_length=50),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     sort_by: str = Query("code", pattern=r"^(code|name|market_cap)$"),
@@ -201,6 +202,10 @@ def stock_list(
 
     with SessionLocal() as s:
         base_q = s.query(Stock).filter(Stock.delisted_at.is_(None))
+        if q:
+            base_q = base_q.filter(
+                (Stock.code.contains(q)) | (Stock.name.contains(q))
+            )
         total = base_q.count()
 
         sort_col = getattr(Stock, sort_by)

@@ -114,3 +114,33 @@ def test_stock_search_pagination(client, db_path):
         all_codes.update(d["code"] for d in page["data"])
     assert "sz999999" not in all_codes
     assert len(all_codes) == 25
+
+
+def test_stock_list_search_via_q(client, db_path):
+    init_db()
+    with SessionLocal() as s:
+        for i in range(5):
+            s.add(Stock(code=f"sz00000{i}", name=f"测试股{i}"))
+        s.add(Stock(code="sh600001", name="无关股"))
+        s.commit()
+
+    # 搜索 "测试"
+    r = client.get("/stocks?q=测试&page_size=10")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 5
+    assert all("测试" in d["name"] for d in body["data"])
+
+    # 搜索 "sz000"
+    r2 = client.get("/stocks?q=sz000&page_size=10")
+    assert r2.status_code == 200
+    assert r2.json()["total"] == 5
+
+    # 搜索无结果
+    r3 = client.get("/stocks?q=不存在&page_size=10")
+    assert r3.status_code == 200
+    assert r3.json()["total"] == 0
+
+    # 无 q 参数 = 全市场
+    r4 = client.get("/stocks?page_size=10")
+    assert r4.json()["total"] == 6
