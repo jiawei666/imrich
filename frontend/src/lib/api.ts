@@ -3,10 +3,11 @@ import type {
   MetaResponse,
   Preset,
   RefreshStatus,
+  ScreenSnapshotMeta,
   StockDetail,
   StockKlineResponse,
   StockListResponse,
-  StockSearchItem,
+  StockSearchResponse,
   TechnicalCandidate,
   KlineTimeframe,
 } from '@/types'
@@ -65,6 +66,12 @@ export const api = {
     const q = qs.toString()
     return get<StockListResponse>(`/stocks${q ? `?${q}` : ''}`)
   },
-  searchStocks: (q: string) =>
-    get<{ data: StockSearchItem[] }>(`/stocks/search?q=${encodeURIComponent(q)}`),
+  searchStocks: (q: string, page = 1, pageSize = 30) =>
+    get<StockSearchResponse>(
+      `/stocks/search?q=${encodeURIComponent(q)}&page=${page}&page_size=${pageSize}`,
+    ),
+  screenHistory: (preset: string) =>
+    get<ScreenSnapshotMeta[]>(`/screen/history?preset=${encodeURIComponent(preset)}`),
+  screenHistoryDetail: (preset: string, date: string) =>
+    get<TechnicalCandidate[]>(`/screen/history/${date}?preset=${encodeURIComponent(preset)}`),
 }

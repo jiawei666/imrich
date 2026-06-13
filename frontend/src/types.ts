@@ -144,6 +144,16 @@ export interface RefreshStatus {
   fundamental: RefreshGroup
 }
 
+/** TopBar 实时动态：后台任务（如技术面筛选）的进行中/完成状态 */
+export type ActivityStatus = 'running' | 'done' | 'error'
+
+export interface ActivityItem {
+  id: string
+  label: string
+  status: ActivityStatus
+  detail?: string
+}
+
 export interface StockKlineResponse {
   data: Kline[]
   highLine: number
@@ -187,4 +197,17 @@ export interface StockSearchItem {
   name: string
   close: number | null
   pct_chg: number | null
+}
+
+export interface StockSearchResponse {
+  total: number
+  page: number
+  pageSize: number
+  data: StockSearchItem[]
+}
+
+export interface ScreenSnapshotMeta {
+  date: string
+  count: number
+  updatedAt: string
 }
