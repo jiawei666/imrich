@@ -9,7 +9,10 @@ const MUTED = '#cdbf9e'
 const INK_SOFT = '#5d6b79'
 
 export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
-  const [mode, setMode] = useState('quarter')
+  const [mode, setMode] = useState<'quarterly' | 'cumulative'>('quarterly')
+
+  const netKey = mode === 'quarterly' ? 'netProfitQuarterly' : 'netProfit'
+  const revKey = mode === 'quarterly' ? 'revenueQuarterly' : 'revenue'
 
   const option: EChartsOption = {
     grid: { left: 8, right: 8, top: 28, bottom: 24, containLabel: true },
@@ -53,7 +56,7 @@ export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
         name: '营收（亿元）',
         type: 'bar',
         yAxisIndex: 1,
-        data: data.map((d) => d.revenue),
+        data: data.map((d) => d[revKey] ?? null),
         itemStyle: { color: MUTED, borderRadius: [3, 3, 0, 0] },
         barWidth: 14,
         barGap: '-100%',
@@ -61,7 +64,7 @@ export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
       {
         name: '净利润（亿元）',
         type: 'bar',
-        data: data.map((d) => d.netProfit),
+        data: data.map((d) => d[netKey] ?? null),
         itemStyle: { color: BRAND, borderRadius: [3, 3, 0, 0] },
         barWidth: 14,
       },
@@ -71,7 +74,7 @@ export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        data: data.map((d) => d.netProfit),
+        data: data.map((d) => d[netKey] ?? null),
         lineStyle: { color: '#2b3a4d', width: 2 },
         itemStyle: { color: '#2b3a4d' },
         tooltip: { show: false },
@@ -84,7 +87,7 @@ export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
           data: [
             {
               name: '创新高',
-              coord: [data.length - 1, data[data.length - 1].netProfit],
+              coord: [data.length - 1, data[data.length - 1][netKey] ?? null],
             },
           ],
         },
@@ -96,11 +99,11 @@ export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
     <div>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-[15px] font-semibold text-ink">
-          净利润 &amp; 营收趋势<span className="ml-1 text-xs font-normal text-ink-faint">（单季度）</span>
+          净利润 &amp; 营收趋势<span className="ml-1 text-xs font-normal text-ink-faint">（{mode === 'quarterly' ? '单季度' : '累计'}）</span>
         </span>
-        <Tabs value={mode} onValueChange={setMode}>
+        <Tabs value={mode} onValueChange={(v) => setMode(v as 'quarterly' | 'cumulative')}>
           <TabsList className="h-7 p-0.5">
-            <TabsTrigger value="quarter" className="px-2.5 py-1 text-xs">
+            <TabsTrigger value="quarterly" className="px-2.5 py-1 text-xs">
               单季度
             </TabsTrigger>
             <TabsTrigger value="cumulative" className="px-2.5 py-1 text-xs">
