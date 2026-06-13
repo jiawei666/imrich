@@ -91,7 +91,7 @@ class Forecast(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("code", "report_date", "source", name="uq_forecast"),
+        UniqueConstraint("code", "report_date", "source", "indicator", name="uq_forecast_indicator"),
         Index("ix_forecasts_code_date", "code", "report_date"),
     )
 

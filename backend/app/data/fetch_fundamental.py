@@ -87,6 +87,7 @@ def fetch_express_reports(report_date: str) -> list[dict]:
             "code": _norm_code(r["股票代码"]),
             "report_date": _to_date(report_date),
             "source": "express",
+            "indicator": "业绩快报",
             "net_profit": _to_float(r["净利润-净利润"]),
             "net_profit_yoy": _to_float(r["净利润-同比增长"]),
             "revenue": _to_float(r["营业收入-营业收入"]),

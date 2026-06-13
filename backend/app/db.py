@@ -40,3 +40,30 @@ def init_db() -> None:
     SessionLocal.configure(bind=engine)
     import app.models  # noqa: F401  确保模型已注册
     Base.metadata.create_all(engine)
+    _migrate_forecasts_constraint(engine)
+
+
+def _migrate_forecasts_constraint(engine):
+    """将 forecasts 表唯一约束从 (code,report_date,source) 迁移到 (code,report_date,source,indicator)。"""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'"
+        ))
+        if result.fetchone() is None:
+            return
+
+        result = conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_forecast' AND tbl_name='forecasts'"
+        ))
+        if result.fetchone() is not None:
+            conn.execute(text(
+                "DELETE FROM forecasts WHERE id NOT IN ("
+                "  SELECT MIN(id) FROM forecasts GROUP BY code, report_date, source, indicator"
+                ")"
+            ))
+            conn.execute(text("DROP INDEX uq_forecast"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX uq_forecast_indicator ON forecasts (code, report_date, source, indicator)"
+            ))
+            conn.commit()

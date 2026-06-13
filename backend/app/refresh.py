@@ -231,6 +231,7 @@ def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str]
             if obj is None:
                 obj = FinancialReport(code=row["code"], report_date=row["report_date"])
                 s.add(obj)
+                s.flush()
             obj.net_profit = row.get("net_profit")
             obj.net_profit_yoy = row.get("net_profit_yoy")
             obj.revenue = row.get("revenue")
@@ -257,12 +258,13 @@ def _refresh_forecasts(
         for i, row in enumerate(tqdm(rows, desc="业绩预告快报"), 1):
             obj = (
                 s.query(Forecast)
-                .filter_by(code=row["code"], report_date=row["report_date"], source=row["source"])
+                .filter_by(code=row["code"], report_date=row["report_date"], source=row["source"], indicator=row.get("indicator"))
                 .one_or_none()
             )
             if obj is None:
-                obj = Forecast(code=row["code"], report_date=row["report_date"], source=row["source"])
+                obj = Forecast(code=row["code"], report_date=row["report_date"], source=row["source"], indicator=row.get("indicator"))
                 s.add(obj)
+                s.flush()
             obj.indicator = row.get("indicator")
             obj.change_desc = row.get("change_desc")
             obj.change_pct = row.get("change_pct")
@@ -307,6 +309,7 @@ def _refresh_industry_index(
                 if obj is None:
                     obj = IndustryIndex(code=industry["code"], date=row["date"], name=industry["name"], open=0, close=0, high=0, low=0, volume=0)
                     s.add(obj)
+                    s.flush()
                 obj.name = industry["name"]
                 obj.open = float(row["open"])
                 obj.close = float(row["close"])
