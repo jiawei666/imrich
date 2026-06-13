@@ -45,6 +45,7 @@ _FUNDAMENTAL_PRESETS = [
             {"key": "netProfitYoY", "label": "净利润同比下限", "value": 50, "min": 0, "max": 200, "step": 5, "unit": "%"},
             {"key": "revenueYoY", "label": "营收同比下限", "value": 20, "min": 0, "max": 200, "step": 5, "unit": "%"},
             {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
+            {"key": "industry", "label": "行业过滤", "type": "select", "value": "", "options": []},
         ],
     },
     {
@@ -55,6 +56,7 @@ _FUNDAMENTAL_PRESETS = [
             {"key": "drawdownMin", "label": "距一年高回撤下限", "value": 35, "min": 10, "max": 80, "step": 5, "unit": "%"},
             {"key": "netProfitYoY", "label": "净利润同比下限", "value": 0, "min": -50, "max": 100, "step": 5, "unit": "%"},
             {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
+            {"key": "industry", "label": "行业过滤", "type": "select", "value": "", "options": []},
         ],
     },
 ]
@@ -62,6 +64,27 @@ _FUNDAMENTAL_PRESETS = [
 
 def get_presets() -> List[dict]:
     out = [dict(preset) for preset in _FUNDAMENTAL_PRESETS]
+
+    # 动态填充 industry 参数的 options（从 Industry 表查询）
+    try:
+        from app.db import SessionLocal
+        from app.models import Industry
+        with SessionLocal() as s:
+            industries = s.query(Industry).filter(Industry.level == 2).order_by(Industry.parent_name, Industry.name).all()
+        options = [{"value": "", "label": "全部行业"}]
+        for ind in industries:
+            options.append({
+                "value": ind.name,
+                "label": ind.name,
+                "group": ind.parent_name or "",
+            })
+        for preset in out:
+            for param in preset.get("params", []):
+                if param.get("key") == "industry":
+                    param["options"] = options
+    except Exception:
+        pass
+
     for pid, specs in _PARAM_SPECS.items():
         out.append({
             "id": pid, "category": "technical", "name": _NAMES[pid],
