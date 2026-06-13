@@ -25,7 +25,6 @@ import {
 export default function App() {
   const [strategy, setStrategy] = useState<StrategyId>('trend-support')
   const [selectedCode, setSelectedCode] = useState<string>(STOCK_DETAIL.code)
-  const [selectedName, setSelectedName] = useState<string>('')
   const [presets, setPresets] = useState<Preset[]>([])
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus | undefined>(undefined)
   const [meta, setMeta] = useState<MetaResponse | undefined>(undefined)
@@ -90,7 +89,6 @@ export default function App() {
       setScreenUpdatedAt(res.updatedAt)
       if (res.items[0]) {
         setSelectedCode(res.items[0].code)
-        setSelectedName(res.items[0].name)
         setSelectedCandidate(res.items[0])
       }
     } catch {
@@ -112,7 +110,6 @@ export default function App() {
       setScreenUpdatedAt(res.updatedAt)
       if (res.items[0]) {
         setSelectedCode(res.items[0].code)
-        setSelectedName(res.items[0].name)
         setSelectedCandidate(res.items[0])
       }
     } catch {
@@ -282,7 +279,7 @@ export default function App() {
                   total={screenTotal}
                   updatedAt={screenUpdatedAt}
                   selectedCode={selectedCode}
-                  onSelectCode={(code, name) => { setSelectedCode(code); setSelectedName(name); setSelectedCandidate(screenItems.find(i => i.code === code) ?? null) }}
+                  onSelectCode={(code, _name) => { setSelectedCode(code); setSelectedCandidate(screenItems.find(i => i.code === code) ?? null) }}
                   indices={indexList}
                   indexConstituentMap={indexConstituentMap}
                   showDrawdown={strategy === 'oversold-bluechip'}

@@ -44,7 +44,7 @@ export function FilterPanel({
                 min={param.min ?? 0}
                 max={param.max ?? 100}
                 step={param.step ?? 1}
-                onValueChange={([v]) => onParamChange(param.key, v)}
+                onValueChange={([v]: number[]) => onParamChange(param.key, v)}
               />
               <div className="text-right text-[10px] text-ink-faint">
                 {paramValues[param.key] ?? param.value}{param.unit ?? ''}

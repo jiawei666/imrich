@@ -56,7 +56,6 @@ export function FundamentalCandidateListCard({
     return result
   }, [items, searchQuery, selectedIndex, sortField, sortOrder])
 
-  const cols = showDrawdown ? 7 : 6
   const gridCls = showDrawdown
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)]'
     : 'grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,0.7fr)]'

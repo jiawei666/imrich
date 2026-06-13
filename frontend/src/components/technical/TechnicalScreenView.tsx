@@ -116,7 +116,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   // ---- 切换策略时重置 ----
   useEffect(() => {
     if (preset) {
-      const defaults = Object.fromEntries(preset.params.map((p) => [p.key, p.value]))
+      const defaults = Object.fromEntries(preset.params.map((p) => [p.key, Number(p.value)])) as Record<string, number>
       setParamValues(() => defaults)
     }
     setFilterOpen(false)

@@ -17,16 +17,7 @@ export const SIGNAL_META: Record<
   domesticSub: { label: '国产替代', tone: 'neutral' },
   industryRecover: { label: '行业复苏', tone: 'neutral' },
   valuationRepair: { label: '估值修复', tone: 'neutral' },
+  oversold: { label: '低位超跌', tone: 'neutral' },
 }
 
-/** The 8 research-report keywords the author lists, as toggle filters. */
-export const KEYWORDS = [
-  '高增长',
-  '业绩超预期',
-  '订单饱满',
-  '产能扩张',
-  '新产品',
-  '国产替代',
-  '行业复苏',
-  '估值修复',
-] as const
+// 研报关键词信号已由后端 _display_signals 统一返回在 signals[] 中

@@ -87,7 +87,7 @@ export function ProfitRevenueChart({ data }: { data: QuarterPoint[] }) {
           data: [
             {
               name: '创新高',
-              coord: [data.length - 1, data[data.length - 1][netKey] ?? null],
+              coord: [data.length - 1, data[data.length - 1][netKey] ?? 0] as [number, number],
             },
           ],
         },

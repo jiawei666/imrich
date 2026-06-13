@@ -10,6 +10,12 @@ export const CANDIDATES: Candidate[] = [
     extraSignals: 4,
     netProfitYoY: 52.3,
     revenueYoY: 28.7,
+    risks: [
+      { label: '原材料价格大幅波动风险', ok: true },
+      { label: '新能源汽车政策退坡风险', ok: true },
+      { label: '市场竞争加剧风险', ok: true },
+    ],
+    drawdownFromHigh: -18.7,
   },
   {
     code: '688256.SH',
@@ -20,6 +26,12 @@ export const CANDIDATES: Candidate[] = [
     extraSignals: 3,
     netProfitYoY: 133.6,
     revenueYoY: 65.9,
+    risks: [
+      { label: '技术迭代不及预期风险', ok: true },
+      { label: '市场竞争加剧风险', ok: true },
+      { label: '海外贸易政策不确定性', ok: true },
+    ],
+    drawdownFromHigh: -25.3,
   },
   {
     code: '002371.SZ',
@@ -30,6 +42,12 @@ export const CANDIDATES: Candidate[] = [
     extraSignals: 3,
     netProfitYoY: 48.1,
     revenueYoY: 36.2,
+    risks: [
+      { label: '半导体周期下行风险', ok: true },
+      { label: '海外贸易政策不确定性', ok: true },
+      { label: '技术迭代不及预期风险', ok: true },
+    ],
+    drawdownFromHigh: -12.1,
   },
   {
     code: '600519.SH',
@@ -40,6 +58,12 @@ export const CANDIDATES: Candidate[] = [
     extraSignals: 2,
     netProfitYoY: 18.7,
     revenueYoY: 15.4,
+    risks: [
+      { label: '消费复苏不及预期', ok: true },
+      { label: '行业景气下行', ok: true },
+      { label: '估值修复不及预期', ok: true },
+    ],
+    drawdownFromHigh: -32.5,
   },
   {
     code: '300394.SZ',
@@ -50,6 +74,12 @@ export const CANDIDATES: Candidate[] = [
     extraSignals: 2,
     netProfitYoY: 41.3,
     revenueYoY: 30.8,
+    risks: [
+      { label: '光通信需求不及预期', ok: true },
+      { label: '市场竞争加剧风险', ok: true },
+      { label: '海外贸易政策不确定性', ok: true },
+    ],
+    drawdownFromHigh: -8.4,
   },
 ]
 
@@ -86,20 +116,15 @@ export const STOCK_DETAIL: StockDetail = {
   name: '宁德时代',
   industry: '电力设备',
   subIndustry: '锂电池',
-  score: 92.5,
-  scoreDelta: 2.1,
-  signals: ['highGrowth', 'orderFull', 'capexExpand', 'newProduct'],
-  signalCount: 4,
   price: 243.58,
-  drawdownFromHigh: -18.7,
   yearHigh: 299.99,
   yearHighDate: '2025-05-20',
   quarters: [
-    { quarter: '2023Q1', netProfit: 98, revenue: 890 },
-    { quarter: '2023Q3', netProfit: 104, revenue: 1010 },
-    { quarter: '2024Q1', netProfit: 105, revenue: 798 },
-    { quarter: '2024Q3', netProfit: 131, revenue: 922 },
-    { quarter: '2025Q1', netProfit: 139.6, revenue: 797.7 },
+    { quarter: '2023Q1', netProfit: 98, revenue: 890, netProfitQuarterly: 98, revenueQuarterly: 890 },
+    { quarter: '2023Q3', netProfit: 104, revenue: 1010, netProfitQuarterly: 104, revenueQuarterly: 1010 },
+    { quarter: '2024Q1', netProfit: 105, revenue: 798, netProfitQuarterly: 105, revenueQuarterly: 798 },
+    { quarter: '2024Q3', netProfit: 131, revenue: 922, netProfitQuarterly: 131, revenueQuarterly: 922 },
+    { quarter: '2025Q1', netProfit: 139.6, revenue: 797.7, netProfitQuarterly: 139.6, revenueQuarterly: 797.7 },
   ],
   latestNote:
     '2025Q1 净利润 139.6 亿元（同比 +52.3%）　营收 797.7 亿元（同比 +28.7%）',
@@ -125,13 +150,6 @@ export const STOCK_DETAIL: StockDetail = {
       date: '2025-06-05',
     },
   ],
-  risks: [
-    { label: '原材料价格大幅波动风险', ok: false },
-    { label: '新能源汽车政策退坡风险', ok: true },
-    { label: '市场竞争加剧风险', ok: false },
-    { label: '海外贸易政策不确定性', ok: true },
-    { label: '技术迭代不及预期风险', ok: true },
-  ],
 }
 
 export const REFRESH_STATUS: RefreshStatus = {
@@ -152,8 +170,8 @@ export const REFRESH_STATUS: RefreshStatus = {
       { label: '财报数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
       { label: '业绩预告快报', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
       { label: '申万行业指数', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
-      { label: '研报-全市场元数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
-      { label: '研报-候选池解析', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '研报元数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '研报PDF解析', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
     ],
   },
 }
