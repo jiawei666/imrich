@@ -100,7 +100,19 @@ def fetch_express_reports(report_date: str) -> list[dict]:
 def get_sw_industries() -> list[dict]:
     df = ak.sw_index_second_info()
     # 接口返回的行业代码带 .SI 后缀，但 index_hist_sw / index_component_sw 都不认这个后缀
-    return [{"code": str(r["行业代码"]).removesuffix(".SI"), "name": str(r["行业名称"])} for _, r in df.iterrows()]
+    return [
+        {
+            "code": str(r["行业代码"]).removesuffix(".SI"),
+            "name": str(r["行业名称"]),
+            "parent_name": str(r["上级行业"]) if pd.notna(r.get("上级行业")) else None,
+        }
+        for _, r in df.iterrows()
+    ]
+
+
+def get_sw_industries_first() -> list[dict]:
+    df = ak.sw_index_first_info()
+    return [{"code": str(r["行业代码"]), "name": str(r["行业名称"])} for _, r in df.iterrows()]
 
 
 def get_industry_index_hist(code: str) -> pd.DataFrame:
@@ -124,3 +136,27 @@ def get_industry_index_hist(code: str) -> pd.DataFrame:
 def get_industry_constituents(code: str) -> list[str]:
     df = _retry(lambda: ak.index_component_sw(symbol=code))
     return [_norm_code(c) for c in df["证券代码"]]
+
+
+def get_index_constituents(index_code: str) -> list[str]:
+    """拉取中证指数成分股列表，返回带市场前缀的 stock_code 列表"""
+    df = _retry(lambda: ak.index_stock_cons_csindex(symbol=index_code))
+    codes: list[str] = []
+    for _, r in df.iterrows():
+        raw = str(r["成分券代码"])
+        code = raw.zfill(6)
+        if code.startswith(("6", "9")):
+            codes.append(f"sh{code}")
+        else:
+            codes.append(f"sz{code}")
+    return codes
+
+
+# 预定义的中证系宽基指数列表
+CS_INDEX_LIST = [
+    ("000300", "沪深300"),
+    ("000905", "中证500"),
+    ("000852", "中证1000"),
+    ("000688", "科创50"),
+    ("000016", "上证50"),
+]

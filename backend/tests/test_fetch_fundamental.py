@@ -81,7 +81,10 @@ def test_get_sw_industries(monkeypatch):
     fake = pd.DataFrame({"行业代码": ["850111.SI", "850221.SI"], "行业名称": ["银行", "白色家电"]})
     monkeypatch.setattr(ff.ak, "sw_index_second_info", lambda: fake)
     out = ff.get_sw_industries()
-    assert out == [{"code": "850111", "name": "银行"}, {"code": "850221", "name": "白色家电"}]
+    assert out == [
+        {"code": "850111", "name": "银行", "parent_name": None},
+        {"code": "850221", "name": "白色家电", "parent_name": None},
+    ]
 
 
 def test_get_industry_index_hist(monkeypatch):
@@ -169,3 +172,33 @@ def test_get_industry_constituents_retries_on_transient_error(monkeypatch):
     out = ff.get_industry_constituents("850111")
     assert calls["n"] == 2
     assert out == ["sz000001"]
+
+
+def test_get_index_constituents_returns_codes(monkeypatch):
+    import pandas as pd
+    from app.data.fetch_fundamental import get_index_constituents
+
+    def fake_cons(symbol):
+        return pd.DataFrame([{"成分券代码": "000001"}, {"成分券代码": "600519"}])
+
+    monkeypatch.setattr("akshare.index_stock_cons_csindex", fake_cons)
+    codes = get_index_constituents("000300")
+    assert "sz000001" in codes
+    assert "sh600519" in codes
+
+
+def test_get_index_constituents_retries_on_transient_error(monkeypatch):
+    from app.data.fetch_fundamental import get_index_constituents
+
+    call_count = [0]
+
+    def flaky(symbol):
+        call_count[0] += 1
+        if call_count[0] < 2:
+            raise ConnectionError("transient")
+        import pandas as pd
+        return pd.DataFrame([{"成分券代码": "000001"}])
+
+    monkeypatch.setattr("akshare.index_stock_cons_csindex", flaky)
+    codes = get_index_constituents("000300")
+    assert "sz000001" in codes
