@@ -77,3 +77,22 @@ class ScreenSnapshotMeta(BaseModel):
     date: str
     count: int
     updatedAt: str
+
+
+class StockRow(BaseModel):
+    """统一的股票行数据，全市场/搜索/筛选结果共用"""
+    code: str
+    name: str
+    industry: Optional[str] = None
+    market_cap: Optional[float] = None
+    close: Optional[float] = None
+    pct_chg: Optional[float] = None
+    # 以下仅筛选结果有值
+    diagnostics: Optional[Dict[str, float]] = None
+    sort_key: Optional[str] = None
+    trigger_date: Optional[str] = None
+
+
+class ScreenResultResponse(BaseModel):
+    items: List[StockRow]
+    total: int
