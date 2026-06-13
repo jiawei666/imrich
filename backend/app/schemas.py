@@ -67,4 +67,13 @@ class StockSearchItem(BaseModel):
 
 
 class StockSearchResponse(BaseModel):
+    total: int
+    page: int
+    pageSize: int
     data: List[StockSearchItem]
+
+
+class ScreenSnapshotMeta(BaseModel):
+    date: str
+    count: int
+    updatedAt: str

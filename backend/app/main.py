@@ -117,6 +117,21 @@ def screen(preset: str, params: str = Query(default="{}")):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/screen/history")
+def screen_history(preset: str):
+    from app.screen import list_screen_snapshots
+    return list_screen_snapshots(preset)
+
+
+@app.get("/screen/history/{date}")
+def screen_history_detail(date: str, preset: str):
+    from app.screen import get_screen_snapshot
+    result = get_screen_snapshot(preset, date)
+    if result is None:
+        raise HTTPException(status_code=404, detail="未找到该日期的筛选结果")
+    return result
+
+
 @app.get("/stock/{code}/kline")
 def stock_kline(code: str, period: str = "day"):
     try:
@@ -131,16 +146,21 @@ def stock_detail(code: str):
 
 
 @app.get("/stocks/search", response_model=StockSearchResponse)
-def stock_search(q: str = Query(..., min_length=1)):
+def stock_search(
+    q: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(30, ge=1, le=100),
+):
     from app.db import SessionLocal
     from app.models import Stock, KlineDay
 
     with SessionLocal() as s:
-        rows = (s.query(Stock)
-                .filter(Stock.delisted_at.is_(None),
-                        (Stock.code.contains(q)) | (Stock.name.contains(q)))
-                .limit(20)
-                .all())
+        base_q = s.query(Stock).filter(
+            Stock.delisted_at.is_(None),
+            (Stock.code.contains(q)) | (Stock.name.contains(q)),
+        )
+        total = base_q.count()
+        rows = base_q.offset((page - 1) * page_size).limit(page_size).all()
 
         # 获取最新收盘价
         codes = [r.code for r in rows]
@@ -165,7 +185,7 @@ def stock_search(q: str = Query(..., min_length=1)):
                 pct_chg=None,
             ))
 
-    return StockSearchResponse(data=items)
+    return StockSearchResponse(total=total, page=page, pageSize=page_size, data=items)
 
 
 @app.get("/stocks", response_model=StockListResponse)

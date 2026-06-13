@@ -97,3 +97,42 @@ def test_fundamental_screen_returns_empty_when_no_reports(client):
     r = client.get("/screen", params={"preset": "super-growth", "params": json.dumps({})})
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_screen_history_endpoint_empty(client):
+    r = client.get("/screen/history", params={"preset": "b2"})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_screen_history_endpoint_returns_snapshots(client):
+    _seed_one()
+    # 先触发一次筛选以产生快照
+    client.get("/screen", params={"preset": "b2", "params": json.dumps({})})
+
+    r = client.get("/screen/history", params={"preset": "b2"})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) >= 1
+    assert "date" in body[0]
+    assert "count" in body[0]
+    assert "updatedAt" in body[0]
+
+
+def test_screen_history_detail_endpoint(client):
+    _seed_one()
+    client.get("/screen", params={"preset": "b2", "params": json.dumps({})})
+
+    # 获取历史列表
+    history = client.get("/screen/history", params={"preset": "b2"}).json()
+    assert len(history) >= 1
+    date = history[0]["date"]
+
+    r = client.get(f"/screen/history/{date}", params={"preset": "b2"})
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+def test_screen_history_detail_404(client):
+    r = client.get("/screen/history/2099-01-01", params={"preset": "b2"})
+    assert r.status_code == 404
