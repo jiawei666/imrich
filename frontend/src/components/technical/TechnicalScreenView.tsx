@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
@@ -40,23 +41,6 @@ export function TechnicalScreenView({
     }
     setScreenMode(() => 'market')
   }, [preset])
-
-  const runScreen = useMemo(() => async () => {
-    try {
-      const res = await api.screenTechnical(strategy, paramValues)
-      setCandidates(res)
-      setScreenMode('screened')
-      if (res[0]) {
-        setSelectedCode(res[0].code)
-        setSelectedName(res[0].name)
-      }
-    } catch {
-      setCandidates([])
-      setScreenMode('screened')
-    }
-    // 运行筛选后自动收起抽屉
-    onToggleFilter?.()
-  }, [strategy, paramValues, onToggleFilter])
 
   const clearScreen = () => {
     setScreenMode('market')
@@ -101,58 +85,93 @@ export function TechnicalScreenView({
         onToggleFilter?.()
       }
     }
+    // 延迟绑定，避免打开按钮的 click 事件触发关闭
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside)
-    }, 0)
+    }, 200)
     return () => {
       clearTimeout(timer)
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [filterOpen, onToggleFilter])
 
+  // 明确关闭抽屉的函数（只在 filterOpen=true 时才 toggle）
+  const closeFilter = () => {
+    if (filterOpen) onToggleFilter?.()
+  }
+
+  const runScreen = useMemo(() => async () => {
+    try {
+      const res = await api.screenTechnical(strategy, paramValues)
+      setCandidates(res)
+      setScreenMode('screened')
+      if (res[0]) {
+        setSelectedCode(res[0].code)
+        setSelectedName(res[0].name)
+      }
+    } catch {
+      setCandidates([])
+      setScreenMode('screened')
+    }
+    // 运行筛选后明确关闭抽屉（不是 toggle）
+    closeFilter()
+  }, [strategy, paramValues, closeFilter])
+
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* 筛选抽屉 */}
+    <div className="relative flex flex-1 overflow-hidden">
+      {/* 筛选抽屉 — 覆盖式 */}
       {filterOpen && (
-        <div ref={drawerRef} className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper/40 px-3 py-5">
-          <TechnicalFilterCard
-            preset={preset}
-            paramValues={paramValues}
-            onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
-            onApply={runScreen}
-          />
+        <div
+          ref={drawerRef}
+          className="absolute left-0 top-0 z-30 flex h-full w-[180px] flex-col border-r border-line bg-paper/95 px-3 py-5 shadow-lg backdrop-blur-sm"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-medium text-ink-soft">筛选参数</span>
+            <button
+              onClick={closeFilter}
+              className="rounded-md p-1 text-ink-faint hover:bg-paper-2 hover:text-ink-soft"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <TechnicalFilterCard
+              preset={preset}
+              paramValues={paramValues}
+              onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
+              onApply={runScreen}
+            />
+          </div>
         </div>
       )}
 
-      {/* 主内容区 */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-1 gap-5 overflow-y-auto p-6">
-          <div className="flex min-w-0 flex-1 flex-col gap-5">
-            <StockListCard
-              screenedData={showScreenedData}
-              selectedCode={selectedCode}
-              onSelectCode={handleSelectCode}
-              onClearScreen={clearScreen}
-              onFirstLoad={(code, name) => {
-                setSelectedCode(code)
-                setSelectedName(name)
-              }}
-            />
-          </div>
-          <div className="min-w-0 flex-1">
-            <Card>
-              <CardContent className="pt-5">
-                <PriceChart
-                  stockName={selectedName}
-                  klineDay={kline.day} klineWeek={kline.week}
-                  klineMonth={kline.month} klineQuarter={kline.quarter}
-                  highLine={highLine} highLabel={highLabel}
-                />
-              </CardContent>
-            </Card>
-          </div>
+      {/* 主内容区 — 恢复响应式布局 */}
+      <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="flex min-w-0 flex-col gap-5">
+          <StockListCard
+            screenedData={showScreenedData}
+            selectedCode={selectedCode}
+            onSelectCode={handleSelectCode}
+            onClearScreen={clearScreen}
+            onFirstLoad={(code, name) => {
+              setSelectedCode(code)
+              setSelectedName(name)
+            }}
+          />
         </div>
-      </div>
+        <div className="min-w-0">
+          <Card>
+            <CardContent className="pt-5">
+              <PriceChart
+                stockName={selectedName}
+                klineDay={kline.day} klineWeek={kline.week}
+                klineMonth={kline.month} klineQuarter={kline.quarter}
+                highLine={highLine} highLabel={highLabel}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   )
 }

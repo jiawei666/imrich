@@ -5,25 +5,22 @@ import { ProgressBar } from '@/components/ui/progress'
 import type { RefreshStatus, StrategyId } from '@/types'
 import { STRATEGY_CATEGORY } from '@/types'
 
-function InlineProgress({ label, status }: { label: string; status: { status: string; steps: { progress: number; done: number; total: number }[] } }) {
-  if (status.status === 'idle') {
+function InlineProgress({ label, step }: { label: string; step: { progress: number; done: number; total: number } | undefined }) {
+  if (!step) return null
+  if (step.total === 0) {
     return <span className="text-[12px] text-ink-faint">{label}: 待执行</span>
   }
-  if (status.status === 'done') {
+  if (step.progress >= 100 && step.done > 0) {
     return <span className="flex items-center gap-1 text-[12px] text-up">{label}: 已完成 <Check className="size-3" /></span>
   }
-  if (status.status === 'error') {
-    return <span className="text-[12px] text-down">{label}: 失败</span>
-  }
   // running
-  const avgProgress = status.steps.length > 0 ? Math.round(status.steps.reduce((a, t) => a + t.progress, 0) / status.steps.length) : 0
   return (
     <span className="flex items-center gap-2 text-[12px]">
       <span className="flex items-center gap-1 text-brand">
         <Loader2 className="size-3 animate-spin" />
-        {label}: {avgProgress}%
+        {label}: {step.progress}%
       </span>
-      <ProgressBar value={avgProgress} className="w-20" />
+      <ProgressBar value={step.progress} className="w-16" />
     </span>
   )
 }
@@ -42,8 +39,13 @@ export function TopBar({
   onRefreshFundamental: () => void
 }) {
   const isTechnical = STRATEGY_CATEGORY[strategy] === 'technical'
-  const klineGroup = refreshStatus?.kline ?? { status: 'idle', steps: [] }
-  const fundamentalGroup = refreshStatus?.fundamental ?? { status: 'idle', steps: [] }
+  const klineGroup = refreshStatus?.kline
+  const klineSteps = klineGroup?.steps
+  // kline 有两个 step: [0]=股票列表, [1]=K线数据
+  const stockListStep = klineSteps?.[0]
+  const klineDataStep = klineSteps?.[1]
+  const fundamentalGroup = refreshStatus?.fundamental
+  const fundamentalSteps = fundamentalGroup?.steps
 
   return (
     <header className="relative z-50 flex h-16 shrink-0 items-center gap-6 border-b border-line bg-cream/80 px-6 backdrop-blur">
@@ -52,9 +54,16 @@ export function TopBar({
       <div className="ml-auto flex items-center gap-3">
         {/* 进度信息 */}
         {isTechnical ? (
-          <InlineProgress label="行情" status={klineGroup} />
+          <div className="flex items-center gap-3">
+            <InlineProgress label="股票列表" step={stockListStep} />
+            <InlineProgress label="K线数据" step={klineDataStep} />
+          </div>
         ) : (
-          <InlineProgress label="基本面" status={fundamentalGroup} />
+          <div className="flex items-center gap-3">
+            {fundamentalSteps?.map((step, i) => (
+              <InlineProgress key={i} label={step.label} step={step} />
+            ))}
+          </div>
         )}
 
         <span className="text-[13px] text-ink-soft">
