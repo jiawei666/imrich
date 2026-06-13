@@ -126,6 +126,8 @@ export interface Preset {
 
 export interface RefreshStep {
   label: string
+  status: 'idle' | 'running' | 'done' | 'error'
+  error: string | null
   done: number
   total: number
   elapsed: string

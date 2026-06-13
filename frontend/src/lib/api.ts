@@ -42,6 +42,14 @@ export const api = {
     if (!r.ok) throw new Error(`${r.status}`)
     return r.json()
   },
+  refreshFundamentalStep: async (step: string) => {
+    const r = await fetch(`${BASE}/refresh/fundamental/${step}`, { method: 'POST' })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error(body.detail || `${r.status}`)
+    }
+    return r.json()
+  },
   screenFundamental: (preset: string, params: Record<string, unknown> = {}) =>
     get<Candidate[]>(
       `/screen?preset=${encodeURIComponent(preset)}&params=${encodeURIComponent(JSON.stringify(params))}`,
