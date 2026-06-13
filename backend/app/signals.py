@@ -85,8 +85,9 @@ def low_position_oversold(
     closes: list[float],
     current_yoy: Optional[float],
     drawdown_threshold: float = 0.35,
+    yoy_threshold: float = 0.0,
 ) -> bool:
-    if not closes or current_yoy is None or current_yoy <= 0:
+    if not closes or current_yoy is None or current_yoy <= yoy_threshold:
         return False
     peak = max(closes)
     if peak <= 0:

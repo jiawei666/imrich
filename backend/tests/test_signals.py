@@ -88,3 +88,10 @@ def test_risk_industry_down():
     assert risk_industry_down([10.0, 5.0, -2.0]) is True
     assert risk_industry_down([10.0, 12.0, 8.0]) is False
     assert risk_industry_down([]) is False
+
+
+def test_low_position_oversold_yoy_threshold():
+    closes = [100.0] + [60.0] * 10
+    assert low_position_oversold(closes, 15.0, yoy_threshold=10.0) is True
+    assert low_position_oversold(closes, 15.0, yoy_threshold=20.0) is False
+    assert low_position_oversold(closes, 0.0, yoy_threshold=0.0) is False
