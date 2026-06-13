@@ -140,8 +140,8 @@ export const REFRESH_STATUS: RefreshStatus = {
     updatedAt: '2025-06-16 10:30:00',
     error: null,
     steps: [
-      { label: '股票列表', done: 2500, total: 2500, elapsed: '00:18', progress: 100 },
-      { label: 'K线数据（日+周+月+季）', done: 2500, total: 2500, elapsed: '03:42', progress: 100 },
+      { label: '股票列表', status: 'done', error: null, done: 2500, total: 2500, elapsed: '00:18', progress: 100 },
+      { label: 'K线数据（日+周+月+季）', status: 'done', error: null, done: 2500, total: 2500, elapsed: '03:42', progress: 100 },
     ],
   },
   fundamental: {
@@ -149,11 +149,11 @@ export const REFRESH_STATUS: RefreshStatus = {
     updatedAt: null,
     error: null,
     steps: [
-      { label: '财报数据', done: 0, total: 0, elapsed: '00:00', progress: 0 },
-      { label: '业绩预告快报', done: 0, total: 0, elapsed: '00:00', progress: 0 },
-      { label: '申万行业指数', done: 0, total: 0, elapsed: '00:00', progress: 0 },
-      { label: '研报-全市场元数据', done: 0, total: 0, elapsed: '00:00', progress: 0 },
-      { label: '研报-候选池解析', done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '财报数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '业绩预告快报', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '申万行业指数', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '研报-全市场元数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '研报-候选池解析', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
     ],
   },
 }
