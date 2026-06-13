@@ -36,61 +36,59 @@ _FIXED_DEFAULTS: Dict[str, dict] = {
 
 _NAMES = {"trend-support": "双线战法", "b2": "B2战法"}
 
+_TECHNICAL_PRESETS = [
+    {
+        "id": pid, "category": "technical", "name": _NAMES[pid],
+        "params": [dict(s) for s in specs],
+    }
+    for pid, specs in _PARAM_SPECS.items()
+]
+
 _FUNDAMENTAL_PRESETS = [
     {
-        "id": "super-growth",
-        "category": "fundamental",
-        "name": "创新高超级成长",
+        "id": "super-growth", "category": "fundamental", "name": "创新高超级成长",
         "params": [
             {"key": "netProfitYoY", "label": "净利润同比下限", "value": 50, "min": 0, "max": 200, "step": 5, "unit": "%"},
             {"key": "revenueYoY", "label": "营收同比下限", "value": 20, "min": 0, "max": 200, "step": 5, "unit": "%"},
             {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
-            {"key": "industry", "label": "行业过滤", "type": "select", "value": "", "options": []},
+            {"key": "industry", "label": "行业过滤", "value": "", "type": "select", "options": []},
         ],
     },
     {
-        "id": "oversold-bluechip",
-        "category": "fundamental",
-        "name": "低位错杀蓝筹",
+        "id": "oversold-bluechip", "category": "fundamental", "name": "低位错杀蓝筹",
         "params": [
             {"key": "drawdownMin", "label": "距一年高回撤下限", "value": 35, "min": 10, "max": 80, "step": 5, "unit": "%"},
             {"key": "netProfitYoY", "label": "净利润同比下限", "value": 0, "min": -50, "max": 100, "step": 5, "unit": "%"},
             {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
-            {"key": "industry", "label": "行业过滤", "type": "select", "value": "", "options": []},
+            {"key": "industry", "label": "行业过滤", "value": "", "type": "select", "options": []},
         ],
     },
 ]
 
 
 def get_presets() -> List[dict]:
-    out = [dict(preset) for preset in _FUNDAMENTAL_PRESETS]
+    from app.db import SessionLocal
+    from app.models import Industry
 
-    # 动态填充 industry 参数的 options（从 Industry 表查询）
+    presets = _TECHNICAL_PRESETS + _FUNDAMENTAL_PRESETS
+
+    # 为 industry 参数填充运行时选项
     try:
-        from app.db import SessionLocal
-        from app.models import Industry
         with SessionLocal() as s:
-            industries = s.query(Industry).filter(Industry.level == 2).order_by(Industry.parent_name, Industry.name).all()
-        options = [{"value": "", "label": "全部行业"}]
-        for ind in industries:
-            options.append({
-                "value": ind.name,
-                "label": ind.name,
-                "group": ind.parent_name or "",
-            })
-        for preset in out:
-            for param in preset.get("params", []):
-                if param.get("key") == "industry":
-                    param["options"] = options
+            rows = s.query(Industry).filter_by(level=2).order_by(Industry.parent_name, Industry.name).all()
+        industry_options = [
+            {"value": row.name, "label": row.name, "group": row.parent_name or ""}
+            for row in rows
+        ]
     except Exception:
-        pass
+        industry_options = []
 
-    for pid, specs in _PARAM_SPECS.items():
-        out.append({
-            "id": pid, "category": "technical", "name": _NAMES[pid],
-            "params": [dict(s) for s in specs],
-        })
-    return out
+    for p in presets:
+        if p["category"] == "fundamental":
+            for param in p["params"]:
+                if param["key"] == "industry":
+                    param["options"] = [{"value": "", "label": "全部行业"}] + industry_options
+    return presets
 
 
 def build_selector(preset_id: str, params: Dict[str, Any]):

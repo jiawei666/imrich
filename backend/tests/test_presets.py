@@ -12,6 +12,30 @@ def test_get_presets_returns_fundamental_and_technical():
             assert {"key", "label", "value"} <= set(param)
 
 
+def test_fundamental_presets_have_industry_param():
+    presets = get_presets()
+    for p in presets:
+        if p["category"] == "fundamental":
+            keys = {param["key"] for param in p["params"]}
+            assert "industry" in keys
+            industry_param = next(param for param in p["params"] if param["key"] == "industry")
+            assert industry_param["type"] == "select"
+            assert isinstance(industry_param.get("options"), list)
+
+
+def test_super_growth_has_revenueYoY():
+    p = next(p for p in get_presets() if p["id"] == "super-growth")
+    keys = {param["key"] for param in p["params"]}
+    assert "revenueYoY" in keys
+    assert "drawdownMin" not in keys
+
+
+def test_oversold_bluechip_has_drawdownMin():
+    p = next(p for p in get_presets() if p["id"] == "oversold-bluechip")
+    keys = {param["key"] for param in p["params"]}
+    assert "drawdownMin" in keys
+
+
 def test_trend_support_default_values():
     p = next(p for p in get_presets() if p["id"] == "trend-support")
     by_key = {x["key"]: x["value"] for x in p["params"]}
