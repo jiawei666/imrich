@@ -52,7 +52,11 @@ class RefreshStep:
 并发控制：
 - 每个步骤 status=running 时重复触发返回 409
 - 不同步骤之间可并发（各自独立 session，不冲突）
-- 一键全刷 `POST /refresh/fundamental` 保留，无依赖步骤（1、2、3）并发执行，4→5 串行
+- 一键全刷 `POST /refresh/fundamental` 保留，后端内部编排执行顺序：
+- 步骤 1、2、3 通过 `asyncio.gather` 并发执行（各自在独立线程中运行）
+- 步骤 1/2/3 全部完成后执行步骤 4
+- 步骤 4 完成后执行步骤 5
+- 一键全刷与单步刷新共享同一套 `_cancel_flag` 和 SSE 推送机制
 
 ### 三、forecasts 表 UNIQUE 约束修复
 
