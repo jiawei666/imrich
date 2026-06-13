@@ -3,10 +3,12 @@ import type {
   MetaResponse,
   Preset,
   RefreshStatus,
+  ScreenResultResponse,
   ScreenSnapshotMeta,
   StockDetail,
   StockKlineResponse,
   StockListResponse,
+  StockRow,
   StockSearchResponse,
   TechnicalCandidate,
   KlineTimeframe,
@@ -45,6 +47,7 @@ export const api = {
     get<Candidate[]>(
       `/screen?preset=${encodeURIComponent(preset)}&params=${encodeURIComponent(JSON.stringify(params))}`,
     ),
+  /** @deprecated 使用 screenResult() 替代 */
   screenTechnical: (preset: string, params: Record<string, number> = {}) =>
     get<TechnicalCandidate[]>(
       `/screen?preset=${encodeURIComponent(preset)}&params=${encodeURIComponent(JSON.stringify(params))}`,
@@ -52,6 +55,7 @@ export const api = {
   stockDetail: (code: string) => get<StockDetail>(`/stock/${encodeURIComponent(code)}`),
   stockKline: (code: string, period: KlineTimeframe) =>
     get<StockKlineResponse>(`/stock/${encodeURIComponent(code)}/kline?period=${period}`),
+  /** @deprecated 使用 stocks() 替代 */
   stockList: (params: {
     page?: number
     pageSize?: number
@@ -66,12 +70,35 @@ export const api = {
     const q = qs.toString()
     return get<StockListResponse>(`/stocks${q ? `?${q}` : ''}`)
   },
+  /** @deprecated 使用 stocks() 替代 */
   searchStocks: (q: string, page = 1, pageSize = 30) =>
     get<StockSearchResponse>(
       `/stocks/search?q=${encodeURIComponent(q)}&page=${page}&page_size=${pageSize}`,
     ),
   screenHistory: (preset: string) =>
     get<ScreenSnapshotMeta[]>(`/screen/history?preset=${encodeURIComponent(preset)}`),
+  /** @deprecated 使用 screenResult() 替代 */
   screenHistoryDetail: (preset: string, date: string) =>
     get<TechnicalCandidate[]>(`/screen/history/${date}?preset=${encodeURIComponent(preset)}`),
+
+  /** 统一股票列表（全市场 + 搜索） */
+  stocks: (params: { q?: string; page?: number; pageSize?: number; sortBy?: string; sortOrder?: string } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.q) qs.set('q', params.q)
+    if (params.page) qs.set('page', String(params.page))
+    if (params.pageSize) qs.set('page_size', String(params.pageSize))
+    if (params.sortBy) qs.set('sort_by', params.sortBy)
+    if (params.sortOrder) qs.set('sort_order', params.sortOrder)
+    const q = qs.toString()
+    return get<StockListResponse>(`/stocks${q ? `?${q}` : ''}`)
+  },
+
+  /** 统一筛选结果（运行筛选 + 历史快照） */
+  screenResult: (params: { preset: string; params?: Record<string, number>; historyDate?: string }) => {
+    const qs = new URLSearchParams()
+    qs.set('preset', params.preset)
+    if (params.params) qs.set('params', JSON.stringify(params.params))
+    if (params.historyDate) qs.set('history_date', params.historyDate)
+    return get<ScreenResultResponse>(`/screen/result?${qs.toString()}`)
+  },
 }

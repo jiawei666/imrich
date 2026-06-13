@@ -211,3 +211,22 @@ export interface ScreenSnapshotMeta {
   count: number
   updatedAt: string
 }
+
+/** 统一的股票行数据，全市场/搜索/筛选结果共用 */
+export interface StockRow {
+  code: string
+  name: string
+  industry: string | null
+  market_cap: number | null
+  close: number | null
+  pct_chg: number | null
+  diagnostics?: Record<string, number>
+  sort_key?: string
+  trigger_date?: string
+}
+
+/** /screen/result 接口响应 */
+export interface ScreenResultResponse {
+  items: StockRow[]
+  total: number
+}
