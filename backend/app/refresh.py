@@ -219,7 +219,6 @@ def _latest_report_date(now: Optional[datetime] = None) -> str:
 
 def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str], list]) -> None:
     step = group.steps[0]
-    step.status = "running"
     report_date = _latest_report_date()
     rows = financial_fn(report_date)
     step.total = len(rows)
@@ -245,7 +244,6 @@ def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str]
         s.commit()
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
-    step.status = "done"
 
 
 def _refresh_forecasts(
@@ -254,7 +252,6 @@ def _refresh_forecasts(
     express_fn: Callable[[str], list],
 ) -> None:
     step = group.steps[1]
-    step.status = "running"
     report_date = _latest_report_date()
     rows = forecast_fn(report_date) + express_fn(report_date)
     step.total = len(rows)
@@ -285,7 +282,6 @@ def _refresh_forecasts(
         s.commit()
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
-    step.status = "done"
 
 
 def _refresh_industry_index(
@@ -295,7 +291,6 @@ def _refresh_industry_index(
     constituents_fn: Callable[[str], list],
 ) -> None:
     step = group.steps[2]
-    step.status = "running"
     industries = industries_fn()
     step.total = len(industries)
     for i, industry in enumerate(tqdm(industries, desc="申万行业指数"), 1):
@@ -333,87 +328,171 @@ def _refresh_industry_index(
         step.done = i
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
-    step.status = "done"
 
 
-def run_fundamental_refresh(
-    financial_fn: Optional[Callable[[str], list]] = None,
-    forecast_fn: Optional[Callable[[str], list]] = None,
-    express_fn: Optional[Callable[[str], list]] = None,
-    industries_fn: Optional[Callable[[], list]] = None,
-    industry_hist_fn: Optional[Callable[[str], pd.DataFrame]] = None,
-    constituents_fn: Optional[Callable[[str], list]] = None,
-    research_meta_fn: Optional[Callable[[], list[dict]]] = None,
-    candidate_screen_fn: Optional[Callable[[str, dict], list[dict]]] = None,
-    research_download_fn: Optional[Callable[[str, Path], str]] = None,
-    research_parse_fn: Optional[Callable[[str], str]] = None,
-    research_directory: Optional[Path] = None,
-) -> None:
+def run_financial_refresh(financial_fn=None):
+    """独立执行步骤1：财报数据刷新。"""
     if financial_fn is None:
         from app.data.fetch_fundamental import fetch_financial_reports
-
         financial_fn = fetch_financial_reports
+    group = STATE["fundamental"]
+    step = group.steps[0]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    try:
+        _refresh_financial_reports(group, financial_fn)
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
+
+
+def run_forecasts_refresh(forecast_fn=None, express_fn=None):
+    """独立执行步骤2：业绩预告快报刷新。"""
     if forecast_fn is None:
         from app.data.fetch_fundamental import fetch_forecasts
-
         forecast_fn = fetch_forecasts
     if express_fn is None:
         from app.data.fetch_fundamental import fetch_express_reports
-
         express_fn = fetch_express_reports
+    group = STATE["fundamental"]
+    step = group.steps[1]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    try:
+        _refresh_forecasts(group, forecast_fn, express_fn)
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
+
+
+def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents_fn=None):
+    """独立执行步骤3：申万行业指数刷新。"""
     if industries_fn is None:
         from app.data.fetch_fundamental import get_sw_industries
-
         industries_fn = get_sw_industries
     if industry_hist_fn is None:
         from app.data.fetch_fundamental import get_industry_index_hist
-
         industry_hist_fn = get_industry_index_hist
     if constituents_fn is None:
         from app.data.fetch_fundamental import get_industry_constituents
-
         constituents_fn = get_industry_constituents
-    if research_meta_fn is None and candidate_screen_fn is None and research_download_fn is None and research_parse_fn is None:
-        include_research = False
-    else:
-        include_research = True
-    if include_research:
-        if research_meta_fn is None:
-            from app.data.fetch_research import fetch_research_metadata
+    group = STATE["fundamental"]
+    step = group.steps[2]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    try:
+        _refresh_industry_index(group, industries_fn, industry_hist_fn, constituents_fn)
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
 
-            research_meta_fn = fetch_research_metadata
-        if candidate_screen_fn is None:
-            from app.fundamental_screen import run_fundamental_screen
 
-            candidate_screen_fn = run_fundamental_screen
-        if research_download_fn is None:
-            from app.data.fetch_research import download_pdf
+def run_research_meta_refresh(research_meta_fn=None):
+    """独立执行步骤4：研报元数据刷新。"""
+    if research_meta_fn is None:
+        from app.data.fetch_research import fetch_research_metadata
+        research_meta_fn = fetch_research_metadata
+    group = STATE["fundamental"]
+    step = group.steps[3]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    try:
+        refresh_research_metadata(research_meta_fn, group=group)
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
 
-            research_download_fn = download_pdf
-        if research_parse_fn is None:
-            from app.data.fetch_research import parse_pdf_text
 
-            research_parse_fn = parse_pdf_text
-        if research_directory is None:
-            research_directory = Path("backend/data/research")
+def run_research_pdfs_refresh(candidate_screen_fn=None, research_download_fn=None, research_parse_fn=None, research_directory=None):
+    """独立执行步骤5：研报PDF解析刷新。依赖步骤4完成。"""
+    group = STATE["fundamental"]
+    step4 = group.steps[3]
+    if step4.status != "done":
+        raise RuntimeError("请先刷新研报元数据")
+    if candidate_screen_fn is None:
+        from app.fundamental_screen import run_fundamental_screen
+        candidate_screen_fn = run_fundamental_screen
+    if research_download_fn is None:
+        from app.data.fetch_research import download_pdf
+        research_download_fn = download_pdf
+    if research_parse_fn is None:
+        from app.data.fetch_research import parse_pdf_text
+        research_parse_fn = parse_pdf_text
+    if research_directory is None:
+        research_directory = Path("backend/data/research")
+    step = group.steps[4]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    try:
+        candidate_codes = [row["code"] for row in candidate_screen_fn("super-growth", {})[:200]]
+        candidate_codes += [row["code"] for row in candidate_screen_fn("oversold-bluechip", {})[:200]]
+        refresh_research_pdfs(
+            sorted(set(candidate_codes)),
+            research_directory,
+            download_fn=research_download_fn,
+            parse_fn=research_parse_fn,
+            group=group,
+        )
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
 
+
+def run_fundamental_refresh(
+    financial_fn=None, forecast_fn=None, express_fn=None,
+    industries_fn=None, industry_hist_fn=None, constituents_fn=None,
+    research_meta_fn=None, candidate_screen_fn=None,
+    research_download_fn=None, research_parse_fn=None,
+    research_directory=None,
+) -> None:
+    """一键全刷：步骤1/2/3并发，4→5串行。"""
+    include_research = any(
+        fn is not None
+        for fn in (research_meta_fn, candidate_screen_fn, research_download_fn, research_parse_fn)
+    )
     group = STATE["fundamental"]
     group.status = "running"
     try:
-        _refresh_financial_reports(group, financial_fn)
-        _refresh_forecasts(group, forecast_fn, express_fn)
-        _refresh_industry_index(group, industries_fn, industry_hist_fn, constituents_fn)
-        if include_research and research_meta_fn and candidate_screen_fn and research_download_fn and research_parse_fn and research_directory:
-            refresh_research_metadata(research_meta_fn, group=group)
-            candidate_codes = [row["code"] for row in candidate_screen_fn("super-growth", {})[:200]]
-            candidate_codes += [row["code"] for row in candidate_screen_fn("oversold-bluechip", {})[:200]]
-            refresh_research_pdfs(
-                sorted(set(candidate_codes)),
-                research_directory,
-                download_fn=research_download_fn,
-                parse_fn=research_parse_fn,
-                group=group,
-            )
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futs = {
+                pool.submit(run_financial_refresh, financial_fn): 0,
+                pool.submit(run_forecasts_refresh, forecast_fn, express_fn): 1,
+                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn): 2,
+            }
+            errors = []
+            for fut in as_completed(futs):
+                try:
+                    fut.result()
+                except Exception as exc:
+                    errors.append(exc)  # 错误已记录在 step.error 中
+            if errors:
+                raise errors[0]
+
+        if include_research:
+            run_research_meta_refresh(research_meta_fn)
+            run_research_pdfs_refresh(candidate_screen_fn, research_download_fn, research_parse_fn, research_directory)
+
         group.status = "done"
         group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     except Exception as e:
@@ -427,7 +506,6 @@ def refresh_research_metadata(fetch_fn: Callable[[], list[dict]], group: Optiona
     step = group.steps[3] if group is not None else None
     if step is not None:
         step.total = len(rows)
-        step.status = "running"
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with SessionLocal() as s:
         for i, row in enumerate(tqdm(rows, desc="研报元数据"), 1):
@@ -449,7 +527,6 @@ def refresh_research_metadata(fetch_fn: Callable[[], list[dict]], group: Optiona
     if step is not None:
         step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
         step.elapsed = "00:00"
-        step.status = "done"
 
 
 def refresh_research_pdfs(
@@ -468,7 +545,6 @@ def refresh_research_pdfs(
         )
         if step is not None:
             step.total = len(rows)
-            step.status = "running"
         for i, row in enumerate(tqdm(rows, desc="研报PDF解析"), 1):
             if not row.pdf_url:
                 continue
@@ -483,7 +559,6 @@ def refresh_research_pdfs(
     if step is not None:
         step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
         step.elapsed = "00:00"
-        step.status = "done"
 
 
 def get_status_snapshot() -> dict:
