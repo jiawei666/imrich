@@ -1,15 +1,13 @@
-import { forwardRef, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
 import { TechnicalFilterCard } from './TechnicalFilterCard'
 import { api } from '@/lib/api'
-import type { ActivityStatus, Kline, KlineTimeframe, Preset, StrategyId, TechnicalCandidate, ScreenSnapshotMeta } from '@/types'
+import type { ActivityStatus, Kline, KlineTimeframe, Preset, StrategyId, StockRow, ScreenSnapshotMeta, StockSortField, SortOrder } from '@/types'
 
 const EMPTY_KLINE: Record<KlineTimeframe, Kline[]> = { day: [], week: [], month: [], quarter: [] }
-
-type ScreenMode = 'market' | 'screened'
 
 export interface TechnicalScreenViewHandle {
   toggleFilter: () => void
@@ -25,46 +23,116 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   onActivity,
 }, ref) {
   const [paramValues, setParamValues] = useState<Record<string, number>>({})
-  const [candidates, setCandidates] = useState<TechnicalCandidate[]>([])
   const [selectedCode, setSelectedCode] = useState<string>('')
   const [selectedName, setSelectedName] = useState<string>('')
-  const [screenMode, setScreenMode] = useState<ScreenMode>('market')
   const [kline, setKline] = useState<Record<KlineTimeframe, Kline[]>>(EMPTY_KLINE)
   const [filterOpen, setFilterOpen] = useState(false)
   const [screening, setScreening] = useState(false)
   const screeningRef = useRef(false)
-  const [historyList, setHistoryList] = useState<ScreenSnapshotMeta[]>([])
-  const [historyDate, setHistoryDate] = useState<string | null>(null)
 
-  // 暴露 toggleFilter 给父组件（StrategySidebar 的筛选按钮调用）
+  // ---- 统一列表数据 ----
+  const [stockData, setStockData] = useState<StockRow[]>([])
+  const [stockTotal, setStockTotal] = useState(0)
+  const [stockLoading, setStockLoading] = useState(true)
+  const [stockLoadingMore, setStockLoadingMore] = useState(false)
+  const [stockError, setStockError] = useState<string | null>(null)
+  const [nextPage, setNextPage] = useState(1)
+  const [sortBy, setSortBy] = useState<StockSortField>('code')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+
+  // ---- 搜索 / 历史 / 数据源标记 ----
+  const [searchQuery, setSearchQuery] = useState('')
+  const [historyList, setHistoryList] = useState<ScreenSnapshotMeta[]>([])
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null)
+  // 'market' = 全市场列表, 'screen' = 筛选结果, 'history' = 历史结果
+  const [dataSource, setDataSource] = useState<'market' | 'screen' | 'history'>('market')
+
+  const isMarketMode = dataSource === 'market'
+
+  // 暴露 toggleFilter
   useImperativeHandle(ref, () => ({
     toggleFilter: () => setFilterOpen((v) => !v),
   }))
 
-  // 切换策略时重置参数为预设默认 + 切回市场模式 + 关闭抽屉
+  // ---- 加载全市场列表 ----
+  const fetchMarketData = useCallback(async (page: number = 1, append: boolean = false) => {
+    if (page === 1) {
+      setStockLoading(true)
+      setStockError(null)
+    } else {
+      setStockLoadingMore(true)
+    }
+    try {
+      const res = await api.stocks({
+        q: searchQuery || undefined,
+        page,
+        pageSize: 30,
+        sortBy,
+        sortOrder,
+      })
+      // 将 StockListItem 映射为 StockRow
+      const items: StockRow[] = res.data.map((s) => ({
+        code: s.code,
+        name: s.name,
+        industry: s.industry,
+        market_cap: s.market_cap,
+        close: s.close,
+        pct_chg: s.pct_chg,
+      }))
+      if (append) {
+        setStockData((prev) => [...prev, ...items])
+      } else {
+        setStockData(items)
+        if (items.length > 0 && page === 1 && !selectedCode) {
+          setSelectedCode(items[0].code)
+          setSelectedName(items[0].name)
+        }
+      }
+      setStockTotal(res.total)
+      setNextPage(page + 1)
+    } catch {
+      if (!append) setStockError('加载失败')
+    } finally {
+      setStockLoading(false)
+      setStockLoadingMore(false)
+    }
+  }, [searchQuery, sortBy, sortOrder, selectedCode])
+
+  // 初始加载 / 排序/搜索变化时重新加载
+  useEffect(() => {
+    if (isMarketMode) fetchMarketData(1, false)
+  }, [fetchMarketData, isMarketMode])
+
+  // ---- 加载历史列表 ----
+  const loadHistoryList = useCallback(async () => {
+    try {
+      const hList = await api.screenHistory(strategy)
+      setHistoryList(hList)
+    } catch {
+      setHistoryList([])
+    }
+  }, [strategy])
+
+  useEffect(() => {
+    loadHistoryList()
+  }, [loadHistoryList])
+
+  // ---- 切换策略时重置 ----
   useEffect(() => {
     if (preset) {
       const defaults = Object.fromEntries(preset.params.map((p) => [p.key, p.value]))
       setParamValues(() => defaults)
     }
-    setScreenMode(() => 'market')
     setFilterOpen(false)
+    setSearchQuery('')
+    setSelectedHistoryDate(null)
+    setDataSource('market')
     setHistoryList([])
-    setHistoryDate(null)
+    setSelectedCode('')
+    setSelectedName('')
   }, [preset])
 
-  const clearScreen = () => {
-    setScreenMode('market')
-    setHistoryList([])
-    setHistoryDate(null)
-  }
-
-  const handleSelectCode = (code: string, name: string) => {
-    setSelectedCode(code)
-    setSelectedName(name)
-  }
-
-  // 选中股票 → 拉取四周期K线
+  // ---- 选中股票 → 拉取K线 ----
   useEffect(() => {
     if (!selectedCode) return
     let cancelled = false
@@ -85,25 +153,85 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     return () => { cancelled = true }
   }, [selectedCode])
 
-  const handleSelectHistoryDate = async (date: string) => {
-    if (date === historyDate) return
+  // ---- 搜索回调 ----
+  const handleSearch = useCallback((q: string) => {
+    setSearchQuery(q)
+    setSelectedHistoryDate(null)
+    setDataSource('market')
+  }, [])
+
+  // ---- 排序回调 ----
+  const handleSort = useCallback((newSortBy: StockSortField, newSortOrder: SortOrder) => {
+    setSortBy(newSortBy)
+    setSortOrder(newSortOrder)
+  }, [])
+
+  // ---- 加载更多回调 ----
+  const handleLoadMore = useCallback(() => {
+    if (stockLoadingMore || stockData.length >= stockTotal) return
+    fetchMarketData(nextPage, true)
+  }, [stockLoadingMore, stockData, stockTotal, nextPage, fetchMarketData])
+
+  // ---- 运行筛选 ----
+  const runScreenFn = useMemo(() => async () => {
+    if (screeningRef.current) return
+    screeningRef.current = true
+    setScreening(true)
+    setFilterOpen(false)
+    const label = `${preset?.name ?? '技术面'}筛选`
+    onActivity('technical-screen', 'running', label)
     try {
-      const res = await api.screenHistoryDetail(strategy, date)
-      setCandidates(res)
-      setScreenMode('screened')
-      setHistoryDate(date)
-      if (res[0]) {
-        setSelectedCode(res[0].code)
-        setSelectedName(res[0].name)
+      const res = await api.screenResult({ preset: strategy, params: paramValues })
+      setStockData(res.items)
+      setStockTotal(res.total)
+      setDataSource('screen')
+      setSelectedHistoryDate(null)
+      setSearchQuery('')
+      if (res.items[0]) {
+        setSelectedCode(res.items[0].code)
+        setSelectedName(res.items[0].name)
+      }
+      onActivity('technical-screen', 'done', label, `共 ${res.total} 只入选`)
+      // 刷新历史列表
+      loadHistoryList()
+    } catch {
+      setStockData([])
+      setStockTotal(0)
+      setDataSource('screen')
+      onActivity('technical-screen', 'error', label, '请求失败')
+    } finally {
+      screeningRef.current = false
+      setScreening(false)
+    }
+  }, [strategy, paramValues, preset, onActivity, loadHistoryList])
+
+  // ---- 选择历史日期 ----
+  const handleSelectHistoryDate = useCallback(async (date: string) => {
+    if (date === selectedHistoryDate) return
+    try {
+      const res = await api.screenResult({ preset: strategy, historyDate: date })
+      setStockData(res.items)
+      setStockTotal(res.total)
+      setDataSource('history')
+      setSelectedHistoryDate(date)
+      setSearchQuery('')
+      if (res.items[0]) {
+        setSelectedCode(res.items[0].code)
+        setSelectedName(res.items[0].name)
       }
     } catch {
       // 请求失败时不切换
     }
-  }
+  }, [strategy, selectedHistoryDate])
 
-  const showScreenedData = screenMode === 'screened' ? candidates : undefined
+  // ---- 清除历史选择 → 返回全市场 ----
+  const handleClearHistory = useCallback(() => {
+    setSelectedHistoryDate(null)
+    setDataSource('market')
+    setSearchQuery('')
+  }, [])
 
-  // 点击抽屉外区域收起
+  // ---- 抽屉外点击收起 ----
   const drawerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!filterOpen) return
@@ -121,46 +249,14 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     }
   }, [filterOpen])
 
-  const runScreen = useMemo(() => async () => {
-    if (screeningRef.current) return
-    screeningRef.current = true
-    setScreening(true)
-    setFilterOpen(false)
-    const label = `${preset?.name ?? '技术面'}筛选`
-    onActivity('technical-screen', 'running', label)
-    try {
-      const res = await api.screenTechnical(strategy, paramValues)
-      setCandidates(res)
-      setScreenMode('screened')
-      if (res[0]) {
-        setSelectedCode(res[0].code)
-        setSelectedName(res[0].name)
-      }
-      onActivity('technical-screen', 'done', label, `共 ${res.length} 只入选`)
-      // 刷新历史列表并自动选中最新日期
-      try {
-        const hList = await api.screenHistory(strategy)
-        setHistoryList(hList)
-        if (hList.length > 0) {
-          setHistoryDate(hList[0].date)
-        }
-      } catch {
-        setHistoryList([])
-        setHistoryDate(null)
-      }
-    } catch {
-      setCandidates([])
-      setScreenMode('screened')
-      onActivity('technical-screen', 'error', label, '请求失败')
-    } finally {
-      screeningRef.current = false
-      setScreening(false)
-    }
-  }, [strategy, paramValues, preset, onActivity])
+  const handleSelectCode = useCallback((code: string, name: string) => {
+    setSelectedCode(code)
+    setSelectedName(name)
+  }, [])
 
   return (
     <div className="relative flex flex-1 overflow-hidden">
-      {/* 筛选抽屉 — 覆盖式 */}
+      {/* 筛选抽屉 */}
       {filterOpen && (
         <div
           ref={drawerRef}
@@ -180,28 +276,36 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
               preset={preset}
               paramValues={paramValues}
               onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
-              onApply={runScreen}
+              onApply={runScreenFn}
               loading={screening}
             />
           </div>
         </div>
       )}
 
-      {/* 主内容区 — 响应式布局 */}
+      {/* 主内容区 */}
       <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <StockListCard
-            screenedData={showScreenedData}
+            data={stockData}
+            total={stockTotal}
+            loading={stockLoading}
+            loadingMore={stockLoadingMore}
             selectedCode={selectedCode}
             onSelectCode={handleSelectCode}
-            onClearScreen={clearScreen}
-            onFirstLoad={(code, name) => {
-              setSelectedCode(code)
-              setSelectedName(name)
-            }}
+            onSearch={handleSearch}
+            onLoadMore={isMarketMode ? handleLoadMore : undefined}
+            onSort={isMarketMode ? handleSort : undefined}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            showSort={isMarketMode}
+            hasMore={isMarketMode && stockData.length < stockTotal}
             historyList={historyList.length > 0 ? historyList : undefined}
-            selectedHistoryDate={historyDate ?? undefined}
+            selectedHistoryDate={selectedHistoryDate ?? undefined}
             onSelectHistoryDate={handleSelectHistoryDate}
+            onClearHistory={handleClearHistory}
+            error={stockError}
+            onRetry={isMarketMode ? () => fetchMarketData(1, false) : undefined}
           />
         </div>
         <div className="min-w-0">
