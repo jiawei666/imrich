@@ -101,12 +101,17 @@ def build_fundamental_rows(params: dict) -> list[dict]:
         text = "\n".join(f"{row.title}\n{row.summary or ''}\n{row.content_text or ''}" for row in research_rows)
         industry_hist = industry_by_name.get(stock.industry or "", [])
         industry_closes = [float(row.close) for row in industry_hist]
+        drawdown_from_high = 0.0
+        if closes:
+            peak = max(closes)
+            if peak > 0:
+                drawdown_from_high = 1 - closes[-1] / peak
         rows.append(
             {
                 "code": stock.code,
                 "name": stock.name,
                 "industry": stock.industry or "",
-                "high_growth": high_growth(financial.net_profit_yoy, threshold=params.get("netProfitYoY", 50)),
+                "high_growth": high_growth(financial.net_profit_yoy, threshold=float(params.get("netProfitYoY", 50))),
                 "beat_expect": beat_expect(financial.net_profit_yoy, history_yoys=yoy_history, forecast_change_pct=forecast_change),
                 "profit_record": profit_new_high([row.net_profit for row in report_history]),
                 "price_new_high": price_new_high(closes),
@@ -117,8 +122,8 @@ def build_fundamental_rows(params: dict) -> list[dict]:
                 "alpha": False,
                 "oversold": low_position_oversold(
                     closes, financial.net_profit_yoy,
-                    drawdown_threshold=params.get("drawdownMin", 35) / 100,
-                    yoy_threshold=params.get("netProfitYoY", 0),
+                    drawdown_threshold=float(params.get("drawdownMin", 35)) / 100,
+                    yoy_threshold=float(params.get("netProfitYoY", 0)),
                 ),
                 "risk_profit_decline": risk_profit_decline(report_history),
                 "risk_price_new_low": risk_price_new_low(closes),
@@ -127,8 +132,13 @@ def build_fundamental_rows(params: dict) -> list[dict]:
                 "revenueYoY": financial.revenue_yoy or 0,
                 "market_cap": stock.market_cap or 0,
                 "return_pct": ((closes[-1] - closes[0]) / closes[0] * 100) if len(closes) >= 2 and closes[0] else 0,
+                "drawdown_from_high": drawdown_from_high,
             }
         )
+
+    # 行业过滤（在 sector_effect/alpha 计算之前）
+    if params.get("industry"):
+        rows = [r for r in rows if r["industry"] == params["industry"]]
 
     for row in rows:
         row["sector_effect"] = sector_effect(row["industry"], rows)
