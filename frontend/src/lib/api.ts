@@ -1,5 +1,7 @@
 import type {
   Candidate,
+  FundamentalScreenResultResponse,
+  IndexInfo,
   MetaResponse,
   Preset,
   RefreshStatus,
@@ -54,6 +56,15 @@ export const api = {
     get<Candidate[]>(
       `/screen?preset=${encodeURIComponent(preset)}&params=${encodeURIComponent(JSON.stringify(params))}`,
     ),
+  screenFundamentalResult: (preset: string, params?: Record<string, number | string>) => {
+    const qs = new URLSearchParams()
+    qs.set('preset', preset)
+    if (params) qs.set('params', JSON.stringify(params))
+    return get<FundamentalScreenResultResponse>(`/screen/fundamental/result?${qs.toString()}`)
+  },
+
+  /** 获取可用宽基指数列表 */
+  listIndices: () => get<IndexInfo[]>('/indices'),
   /** @deprecated 使用 screenResult() 替代 */
   screenTechnical: (preset: string, params: Record<string, number> = {}) =>
     get<TechnicalCandidate[]>(
