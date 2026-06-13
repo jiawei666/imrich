@@ -7,6 +7,7 @@ WEIGHTS = {
     "highGrowth": 22,
     "newHigh": 18,
     "beatExpect": 16,
+    "oversold": 15,
     "sectorEffect": 12,
     "industryNewHigh": 10,
     "alpha": 12,
@@ -27,6 +28,8 @@ def _display_signals(row: dict) -> list[str]:
         signals.append("newHigh")
     if row.get("beat_expect"):
         signals.append("beatExpect")
+    if row.get("oversold"):
+        signals.append("oversold")
     if row.get("sector_effect"):
         signals.append("sectorEffect")
     if row.get("industry_new_high"):
@@ -68,6 +71,12 @@ def _candidate(row: dict) -> dict:
         "extraSignals": max(len(signals) - len(visible), 0),
         "netProfitYoY": float(row.get("netProfitYoY") or 0),
         "revenueYoY": float(row.get("revenueYoY") or 0),
+        "drawdownFromHigh": float(row.get("drawdown_from_high") or 0),
+        "risks": [
+            {"label": "业绩持续下滑", "ok": not row.get("risk_profit_decline")},
+            {"label": "股价创历史新低", "ok": not row.get("risk_price_new_low")},
+            {"label": "行业景气下行", "ok": not row.get("risk_industry_down")},
+        ],
     }
 
 
