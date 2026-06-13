@@ -32,6 +32,8 @@ DEFAULT_MIN_CAP = 0  # 不限制市值
 @dataclass
 class RefreshStep:
     label: str
+    status: str = "idle"      # idle | running | done | error
+    error: Optional[str] = None
     done: int = 0
     total: int = 0
     elapsed: str = "00:00"
@@ -217,6 +219,7 @@ def _latest_report_date(now: Optional[datetime] = None) -> str:
 
 def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str], list]) -> None:
     step = group.steps[0]
+    step.status = "running"
     report_date = _latest_report_date()
     rows = financial_fn(report_date)
     step.total = len(rows)
@@ -242,6 +245,7 @@ def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str]
         s.commit()
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
+    step.status = "done"
 
 
 def _refresh_forecasts(
@@ -250,6 +254,7 @@ def _refresh_forecasts(
     express_fn: Callable[[str], list],
 ) -> None:
     step = group.steps[1]
+    step.status = "running"
     report_date = _latest_report_date()
     rows = forecast_fn(report_date) + express_fn(report_date)
     step.total = len(rows)
@@ -280,6 +285,7 @@ def _refresh_forecasts(
         s.commit()
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
+    step.status = "done"
 
 
 def _refresh_industry_index(
@@ -289,6 +295,7 @@ def _refresh_industry_index(
     constituents_fn: Callable[[str], list],
 ) -> None:
     step = group.steps[2]
+    step.status = "running"
     industries = industries_fn()
     step.total = len(industries)
     for i, industry in enumerate(tqdm(industries, desc="申万行业指数"), 1):
@@ -326,6 +333,7 @@ def _refresh_industry_index(
         step.done = i
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
+    step.status = "done"
 
 
 def run_fundamental_refresh(
@@ -419,6 +427,7 @@ def refresh_research_metadata(fetch_fn: Callable[[], list[dict]], group: Optiona
     step = group.steps[3] if group is not None else None
     if step is not None:
         step.total = len(rows)
+        step.status = "running"
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with SessionLocal() as s:
         for i, row in enumerate(tqdm(rows, desc="研报元数据"), 1):
@@ -440,6 +449,7 @@ def refresh_research_metadata(fetch_fn: Callable[[], list[dict]], group: Optiona
     if step is not None:
         step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
         step.elapsed = "00:00"
+        step.status = "done"
 
 
 def refresh_research_pdfs(
@@ -458,6 +468,7 @@ def refresh_research_pdfs(
         )
         if step is not None:
             step.total = len(rows)
+            step.status = "running"
         for i, row in enumerate(tqdm(rows, desc="研报PDF解析"), 1):
             if not row.pdf_url:
                 continue
@@ -472,6 +483,7 @@ def refresh_research_pdfs(
     if step is not None:
         step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
         step.elapsed = "00:00"
+        step.status = "done"
 
 
 def get_status_snapshot() -> dict:
@@ -524,26 +536,36 @@ def get_status_snapshot() -> dict:
                 f_steps[0]["total"] = max(f_steps[0]["total"], report_count)
                 f_steps[0]["done"] = report_count
                 f_steps[0]["progress"] = 100
+                if f_steps[0]["status"] == "idle":
+                    f_steps[0]["status"] = "done"
 
             if forecast_count > 0:
                 f_steps[1]["total"] = max(f_steps[1]["total"], forecast_count)
                 f_steps[1]["done"] = forecast_count
                 f_steps[1]["progress"] = 100
+                if f_steps[1]["status"] == "idle":
+                    f_steps[1]["status"] = "done"
 
             if industry_count > 0:
                 f_steps[2]["total"] = max(f_steps[2]["total"], industry_count)
                 f_steps[2]["done"] = industry_count
                 f_steps[2]["progress"] = 100
+                if f_steps[2]["status"] == "idle":
+                    f_steps[2]["status"] = "done"
 
             if research_meta_count > 0:
                 f_steps[3]["total"] = max(f_steps[3]["total"], research_meta_count)
                 f_steps[3]["done"] = research_meta_count
                 f_steps[3]["progress"] = 100
+                if f_steps[3]["status"] == "idle":
+                    f_steps[3]["status"] = "done"
 
             if research_parsed_count > 0:
                 f_steps[4]["total"] = max(f_steps[4]["total"], research_parsed_count)
                 f_steps[4]["done"] = research_parsed_count
                 f_steps[4]["progress"] = 100
+                if f_steps[4]["status"] == "idle":
+                    f_steps[4]["status"] = "done"
         except Exception:
             pass
 
