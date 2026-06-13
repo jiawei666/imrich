@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 from app.db import SessionLocal
-from app.models import Stock, KlineDay
+from app.models import Stock, KlineDay, ScreenSnapshot
 from app.presets import build_selector, _NAMES
 from app.fundamental_screen import run_fundamental_screen
 from app.pool_filters import filter_default_pool
+
+logger = logging.getLogger(__name__)
 
 
 def _load_kline_data() -> Dict[str, pd.DataFrame]:
@@ -46,12 +50,74 @@ def _stock_meta() -> Dict[str, Dict[str, Any]]:
                 for st in s.query(Stock).all()}
 
 
+def _latest_kline_date() -> Optional[str]:
+    with SessionLocal() as s:
+        return s.query(KlineDay.date).order_by(KlineDay.date.desc()).limit(1).scalar()
+
+
+def _load_snapshot(preset_id: str, data_date: str) -> Optional[ScreenSnapshot]:
+    with SessionLocal() as s:
+        return s.query(ScreenSnapshot).filter_by(
+            preset_id=preset_id, data_date=data_date
+        ).first()
+
+
+def _save_snapshot(preset_id: str, data_date: str, params_json: str,
+                   candidates: List[dict]) -> None:
+    try:
+        with SessionLocal() as s:
+            snap = s.query(ScreenSnapshot).filter_by(
+                preset_id=preset_id, data_date=data_date
+            ).first()
+            if snap is None:
+                snap = ScreenSnapshot(preset_id=preset_id, data_date=data_date)
+                s.add(snap)
+            snap.params_json = params_json
+            snap.candidates_json = json.dumps(candidates, ensure_ascii=False)
+            snap.candidate_count = len(candidates)
+            snap.updated_at = datetime.now().isoformat()
+            s.commit()
+    except Exception:
+        logger.exception("保存筛选快照失败")
+
+
+def list_screen_snapshots(preset_id: str) -> List[dict]:
+    with SessionLocal() as s:
+        rows = (s.query(ScreenSnapshot)
+                .filter_by(preset_id=preset_id)
+                .order_by(ScreenSnapshot.data_date.desc())
+                .all())
+        return [
+            {"date": r.data_date, "count": r.candidate_count, "updatedAt": r.updated_at or ""}
+            for r in rows
+        ]
+
+
+def get_screen_snapshot(preset_id: str, data_date: str) -> Optional[List[dict]]:
+    with SessionLocal() as s:
+        snap = s.query(ScreenSnapshot).filter_by(
+            preset_id=preset_id, data_date=data_date
+        ).first()
+        if snap is None:
+            return None
+        return json.loads(snap.candidates_json)
+
+
 def run_technical_screen(preset_id: str, params: Dict[str, Any]) -> List[dict]:
+    data_date = _latest_kline_date()
+    if data_date is None:
+        return []
+
+    params_json = json.dumps(params or {}, sort_keys=True)
+    snap = _load_snapshot(preset_id, data_date)
+    if snap is not None and snap.params_json == params_json:
+        return json.loads(snap.candidates_json)
+
     selector = build_selector(preset_id, params)
     data = _load_kline_data()
     if not data:
         return []
-    date = max(df["date"].max() for df in data.values())
+    date = pd.Timestamp(data_date)
     meta = _stock_meta()
     name = _NAMES.get(preset_id, preset_id)
 
@@ -79,6 +145,8 @@ def run_technical_screen(preset_id: str, params: Dict[str, Any]) -> List[dict]:
             "sortKey": trigger,
         })
     candidates.sort(key=lambda c: (c["sortKey"], c["code"]), reverse=True)
+
+    _save_snapshot(preset_id, data_date, params_json, candidates)
     return candidates
 
 
