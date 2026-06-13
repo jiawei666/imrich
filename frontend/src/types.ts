@@ -12,6 +12,7 @@ export type SignalKey =
   | 'domesticSub' // 国产替代
   | 'industryRecover' // 行业复苏
   | 'valuationRepair' // 估值修复
+  | 'oversold' // 低位超跌
 
 export interface Candidate {
   code: string
@@ -19,15 +20,19 @@ export interface Candidate {
   industry: string
   score: number
   signals: SignalKey[]
-  extraSignals: number // "+N" overflow count
+  extraSignals: number
   netProfitYoY: number
   revenueYoY: number
+  risks: RiskItem[]
+  drawdownFromHigh: number
 }
 
 export interface QuarterPoint {
   quarter: string
-  netProfit: number // 亿元
-  revenue: number // 亿元
+  netProfit: number // 亿元（累计）
+  revenue: number // 亿元（累计）
+  netProfitQuarterly: number | null // 亿元（单季度）
+  revenueQuarterly: number | null // 亿元（单季度）
 }
 
 export interface Kline {
@@ -62,12 +67,7 @@ export interface StockDetail {
   name: string
   industry: string
   subIndustry: string
-  score: number
-  scoreDelta: number
-  signals: SignalKey[]
-  signalCount: number
   price: number
-  drawdownFromHigh: number
   yearHigh: number
   yearHighDate: string
   quarters: QuarterPoint[]
@@ -78,7 +78,6 @@ export interface StockDetail {
   klineQuarter: Kline[]
   highLine: number
   reports: ResearchReport[]
-  risks: RiskItem[]
 }
 
 export type StrategyId =
@@ -109,11 +108,13 @@ export interface TechnicalCandidate {
 export interface PresetParam {
   key: string
   label: string
-  value: number
+  type?: 'number' | 'select'
+  value: number | string
   min?: number
   max?: number
   step?: number
   unit?: string
+  options?: { value: string; label: string; group?: string }[]
 }
 
 export interface Preset {
@@ -231,4 +232,17 @@ export interface StockRow {
 export interface ScreenResultResponse {
   items: StockRow[]
   total: number
+}
+
+/** /screen/fundamental/result 接口响应 */
+export interface FundamentalScreenResultResponse {
+  items: Candidate[]
+  total: number
+  updatedAt: string | null
+}
+
+/** 宽基指数信息 */
+export interface IndexInfo {
+  indexCode: string
+  indexName: string
 }
