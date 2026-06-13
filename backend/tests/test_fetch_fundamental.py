@@ -78,12 +78,12 @@ def test_fetch_express_reports_parses_yjkb(monkeypatch):
 def test_get_sw_industries(monkeypatch):
     # sw_index_second_info 返回的行业代码带 .SI 后缀，但 index_hist_sw / index_component_sw
     # 都不认这个后缀（传入会返回空结果），需要在这里去掉。
-    fake = pd.DataFrame({"行业代码": ["850111.SI", "850221.SI"], "行业名称": ["银行", "白色家电"]})
+    fake = pd.DataFrame({"行业代码": ["850111.SI", "850221.SI"], "行业名称": ["银行", "白色家电"], "上级行业": ["金融服务", "制造业"]})
     monkeypatch.setattr(ff.ak, "sw_index_second_info", lambda: fake)
     out = ff.get_sw_industries()
     assert out == [
-        {"code": "850111", "name": "银行", "parent_name": None},
-        {"code": "850221", "name": "白色家电", "parent_name": None},
+        {"code": "850111", "name": "银行", "parent_name": "金融服务"},
+        {"code": "850221", "name": "白色家电", "parent_name": "制造业"},
     ]
 
 
