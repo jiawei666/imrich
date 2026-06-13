@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Float, String, Boolean, UniqueConstraint, Index
+from sqlalchemy import Float, Integer, String, Boolean, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -113,6 +113,47 @@ class IndustryIndex(Base):
         UniqueConstraint("code", "date", name="uq_industry_index"),
         Index("ix_industry_index_code_date", "code", "date"),
     )
+
+
+class Industry(Base):
+    __tablename__ = "industries"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    level: Mapped[int] = mapped_column(Integer)
+    parent_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class FundamentalCandidate(Base):
+    __tablename__ = "fundamental_candidates"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    preset_id: Mapped[str] = mapped_column(String, index=True)
+    code: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    industry: Mapped[str] = mapped_column(String, default="")
+    score: Mapped[float] = mapped_column(Float)
+    signals: Mapped[str] = mapped_column(String)
+    extra_signals: Mapped[int] = mapped_column(Integer, default=0)
+    net_profit_yoy: Mapped[float] = mapped_column(Float)
+    revenue_yoy: Mapped[float] = mapped_column(Float)
+    drawdown_from_high: Mapped[float] = mapped_column(Float)
+    risks: Mapped[str] = mapped_column(String)
+    params_json: Mapped[str] = mapped_column(String)
+    rank: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[str] = mapped_column(String)
+
+    __table_args__ = (
+        Index("ix_fc_preset_code", "preset_id", "code"),
+    )
+
+
+class IndexConstituent(Base):
+    __tablename__ = "index_constituents"
+
+    index_code: Mapped[str] = mapped_column(String, primary_key=True)
+    stock_code: Mapped[str] = mapped_column(String, primary_key=True)
+    index_name: Mapped[str] = mapped_column(String)
 
 
 class ResearchReport(Base):
