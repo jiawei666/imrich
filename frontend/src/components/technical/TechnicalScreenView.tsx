@@ -113,10 +113,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     }
   }, [strategy])
 
-  useEffect(() => {
-    loadHistoryList()
-  }, [loadHistoryList])
-
   // ---- 切换策略时重置 ----
   useEffect(() => {
     if (preset) {
@@ -127,10 +123,11 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setSearchQuery('')
     setSelectedHistoryDate(null)
     setDataSource('market')
-    setHistoryList([])
     setSelectedCode('')
     setSelectedName('')
-  }, [preset])
+    // 主动加载历史列表（preset 变化时 strategy 可能不变，需手动触发）
+    loadHistoryList()
+  }, [preset, loadHistoryList])
 
   // ---- 选中股票 → 拉取K线 ----
   useEffect(() => {
