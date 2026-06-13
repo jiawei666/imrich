@@ -133,3 +133,20 @@ class ResearchReport(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     __table_args__ = (Index("ix_research_reports_code_date", "code", "published_at"),)
+
+
+class ScreenSnapshot(Base):
+    __tablename__ = "screen_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    preset_id: Mapped[str] = mapped_column(String, index=True)
+    data_date: Mapped[str] = mapped_column(String)  # 'YYYY-MM-DD'
+    params_json: Mapped[str] = mapped_column(String, default="{}")
+    candidates_json: Mapped[str] = mapped_column(String, default="[]")
+    candidate_count: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("preset_id", "data_date", name="uq_screen_snapshot"),
+        Index("ix_screen_snapshot_preset_date", "preset_id", "data_date"),
+    )
