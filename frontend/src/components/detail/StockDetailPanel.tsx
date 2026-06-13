@@ -57,12 +57,11 @@ export function StockDetailPanel({
           </div>
           <div className="rounded-[14px] border border-line-soft bg-paper p-4">
             <PriceChart
+              stockName={detail.name}
               klineDay={detail.klineDay}
               klineWeek={detail.klineWeek}
               klineMonth={detail.klineMonth}
               klineQuarter={detail.klineQuarter}
-              highLine={detail.highLine}
-              highLabel="历史新高"
             />
           </div>
         </div>

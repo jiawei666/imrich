@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NumberField } from '@/components/ui/field'
 import type { Preset } from '@/types'
@@ -7,11 +8,13 @@ export function TechnicalFilterCard({
   paramValues,
   onParamChange,
   onApply,
+  loading,
 }: {
   preset: Preset | null
   paramValues: Record<string, number>
   onParamChange: (key: string, value: number) => void
   onApply: () => void
+  loading?: boolean
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -30,7 +33,14 @@ export function TechnicalFilterCard({
           ))}
         </div>
       )}
-      <Button variant="primary" size="sm" onClick={onApply} className="w-full">运行筛选</Button>
+      <Button variant="primary" size="sm" onClick={onApply} disabled={loading} className="w-full">
+        {loading ? (
+          <>
+            <Loader2 className="size-3.5 animate-spin" />
+            筛选中...
+          </>
+        ) : '运行筛选'}
+      </Button>
     </div>
   )
 }

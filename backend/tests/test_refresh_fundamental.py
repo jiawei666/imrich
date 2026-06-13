@@ -90,6 +90,44 @@ def test_run_fundamental_refresh_marks_error_on_exception(db_path):
     assert refresh.STATE["fundamental"].status == "error"
 
 
+def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
+    init_db()
+    refresh.reset_state()
+    group = refresh.STATE["fundamental"]
+
+    def industry_hist_fn(code):
+        if code == "850222":
+            raise RuntimeError("persistent failure")
+        return pd.DataFrame(
+            [{"date": "2025-01-02", "open": 100.0, "close": 101.0, "high": 102.0, "low": 99.0, "volume": 1000.0}]
+        )
+
+    constituents = {"850111": ["sz000001"], "850222": ["sz000002"], "850333": ["sz000003"]}
+
+    refresh._refresh_industry_index(
+        group,
+        industries_fn=lambda: [
+            {"code": "850111", "name": "银行"},
+            {"code": "850222", "name": "白色家电"},
+            {"code": "850333", "name": "汽车"},
+        ],
+        industry_hist_fn=industry_hist_fn,
+        constituents_fn=lambda code: constituents[code],
+    )
+
+    with SessionLocal() as s:
+        assert s.query(IndustryIndex).filter_by(code="850111").count() == 1
+        assert s.query(IndustryIndex).filter_by(code="850222").count() == 0
+        assert s.query(IndustryIndex).filter_by(code="850333").count() == 1
+        assert s.get(Stock, "sz000001").industry == "银行"
+        assert s.get(Stock, "sz000003").industry == "汽车"
+        stock2 = s.get(Stock, "sz000002")
+        assert stock2 is None or not stock2.industry
+
+    assert group.steps[2].done == 3
+    assert group.steps[2].progress == 100
+
+
 def test_refresh_research_metadata_upserts_stage1(db_path):
     init_db()
     refresh.refresh_research_metadata(

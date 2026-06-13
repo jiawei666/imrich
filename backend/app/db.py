@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import get_db_path
@@ -11,7 +11,21 @@ class Base(DeclarativeBase):
 def _make_engine():
     import os
     os.makedirs(os.path.dirname(get_db_path()) or ".", exist_ok=True)
-    return create_engine(f"sqlite:///{get_db_path()}", future=True)
+    engine = create_engine(
+        f"sqlite:///{get_db_path()}",
+        future=True,
+        connect_args={"check_same_thread": False},
+    )
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+
+    return engine
 
 
 engine = _make_engine()

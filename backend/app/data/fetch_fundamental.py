@@ -1,11 +1,26 @@
 from __future__ import annotations
 
-from typing import Optional
+import time
+from typing import Callable, Optional, TypeVar
 
 import akshare as ak  # type: ignore
 import pandas as pd
 
 from app.data.fetch_kline import normalize_stock_code_for_sina
+
+T = TypeVar("T")
+
+
+def _retry(fn: Callable[[], T], attempts: int = 3, delay: float = 1.0) -> T:
+    """重试调用 fn，应对申万研究接口偶发的瞬时 JSON 解析/网络错误。"""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except Exception:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
 def _to_float(value: object) -> Optional[float]:
@@ -83,11 +98,12 @@ def fetch_express_reports(report_date: str) -> list[dict]:
 
 def get_sw_industries() -> list[dict]:
     df = ak.sw_index_second_info()
-    return [{"code": str(r["行业代码"]), "name": str(r["行业名称"])} for _, r in df.iterrows()]
+    # 接口返回的行业代码带 .SI 后缀，但 index_hist_sw / index_component_sw 都不认这个后缀
+    return [{"code": str(r["行业代码"]).removesuffix(".SI"), "name": str(r["行业名称"])} for _, r in df.iterrows()]
 
 
 def get_industry_index_hist(code: str) -> pd.DataFrame:
-    df = ak.index_hist_sw(symbol=code, period="day")
+    df = _retry(lambda: ak.index_hist_sw(symbol=code, period="day"))
     if df.empty:
         return pd.DataFrame(columns=["date", "open", "close", "high", "low", "volume"])
     out = df.rename(
@@ -105,5 +121,5 @@ def get_industry_index_hist(code: str) -> pd.DataFrame:
 
 
 def get_industry_constituents(code: str) -> list[str]:
-    df = ak.index_component_sw(symbol=code)
+    df = _retry(lambda: ak.index_component_sw(symbol=code))
     return [_norm_code(c) for c in df["证券代码"]]

@@ -11,6 +11,8 @@ import { KEYWORDS } from '@/data/signals'
 import { api } from '@/lib/api'
 import {
   STRATEGY_CATEGORY,
+  type ActivityItem,
+  type ActivityStatus,
   type Candidate,
   type MetaResponse,
   type Preset,
@@ -36,8 +38,26 @@ export default function App() {
   const [stockDetail, setStockDetail] = useState<StockDetail>(STOCK_DETAIL)
   const [loadingCandidates, setLoadingCandidates] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [activities, setActivities] = useState<ActivityItem[]>([])
 
   const technicalRef = useRef<TechnicalScreenViewHandle>(null)
+  const activityTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  // 上报后台任务状态，供 TopBar 实时动态区展示；done/error 状态 3 秒后自动消失
+  const reportActivity = (id: string, status: ActivityStatus, label: string, detail?: string) => {
+    const timers = activityTimersRef.current
+    if (timers[id]) {
+      clearTimeout(timers[id])
+      delete timers[id]
+    }
+    setActivities((prev) => [...prev.filter((a) => a.id !== id), { id, label, status, detail }])
+    if (status !== 'running') {
+      timers[id] = setTimeout(() => {
+        setActivities((prev) => prev.filter((a) => a.id !== id))
+        delete timers[id]
+      }, 3000)
+    }
+  }
 
   useEffect(() => {
     api.presets().then(setPresets).catch(() => setPresets([]))
@@ -119,6 +139,7 @@ export default function App() {
           updatedAt={updatedAt}
           strategy={strategy}
           refreshStatus={refreshStatus}
+          activities={activities}
           onRefreshKline={triggerRefreshKline}
           onRefreshFundamental={triggerRefreshFundamental}
         />
@@ -128,7 +149,7 @@ export default function App() {
             ref={technicalRef}
             strategy={strategy}
             preset={activePreset}
-            refreshStatus={refreshStatus}
+            onActivity={reportActivity}
           />
         ) : (
           <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">

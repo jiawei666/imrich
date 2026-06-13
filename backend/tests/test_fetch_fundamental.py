@@ -76,7 +76,9 @@ def test_fetch_express_reports_parses_yjkb(monkeypatch):
 
 
 def test_get_sw_industries(monkeypatch):
-    fake = pd.DataFrame({"行业代码": ["850111", "850221"], "行业名称": ["银行", "白色家电"]})
+    # sw_index_second_info 返回的行业代码带 .SI 后缀，但 index_hist_sw / index_component_sw
+    # 都不认这个后缀（传入会返回空结果），需要在这里去掉。
+    fake = pd.DataFrame({"行业代码": ["850111.SI", "850221.SI"], "行业名称": ["银行", "白色家电"]})
     monkeypatch.setattr(ff.ak, "sw_index_second_info", lambda: fake)
     out = ff.get_sw_industries()
     assert out == [{"code": "850111", "name": "银行"}, {"code": "850221", "name": "白色家电"}]
@@ -117,3 +119,53 @@ def test_get_industry_constituents(monkeypatch):
     monkeypatch.setattr(ff.ak, "index_component_sw", lambda symbol: fake)
     out = ff.get_industry_constituents("850111")
     assert out == ["sz000001", "sh600000"]
+
+
+def test_get_industry_index_hist_retries_on_transient_error(monkeypatch):
+    fake = pd.DataFrame({
+        "代码": ["850111"], "日期": ["2025-01-02"], "收盘": [101.0], "开盘": [100.0],
+        "最高": [102.0], "最低": [99.0], "成交量": [1000.0], "成交额": [1.0e8],
+    })
+    calls = {"n": 0}
+
+    def flaky(symbol, period):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+        return fake
+
+    monkeypatch.setattr(ff.ak, "index_hist_sw", flaky)
+    monkeypatch.setattr(ff.time, "sleep", lambda s: None)
+    out = ff.get_industry_index_hist("850111")
+    assert calls["n"] == 3
+    assert out.iloc[0]["close"] == 101.0
+
+
+def test_get_industry_index_hist_raises_after_exhausting_retries(monkeypatch):
+    def always_fail(symbol, period):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(ff.ak, "index_hist_sw", always_fail)
+    monkeypatch.setattr(ff.time, "sleep", lambda s: None)
+    try:
+        ff.get_industry_index_hist("850111")
+        assert False, "应抛出异常"
+    except ValueError:
+        pass
+
+
+def test_get_industry_constituents_retries_on_transient_error(monkeypatch):
+    fake = pd.DataFrame({"证券代码": ["000001"], "证券名称": ["平安银行"]})
+    calls = {"n": 0}
+
+    def flaky(symbol):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise ValueError("boom")
+        return fake
+
+    monkeypatch.setattr(ff.ak, "index_component_sw", flaky)
+    monkeypatch.setattr(ff.time, "sleep", lambda s: None)
+    out = ff.get_industry_constituents("850111")
+    assert calls["n"] == 2
+    assert out == ["sz000001"]

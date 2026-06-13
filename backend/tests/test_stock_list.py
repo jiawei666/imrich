@@ -73,3 +73,44 @@ def test_stock_list_invalid_sort_by(client, db_path):
 def test_stock_list_invalid_sort_order(client, db_path):
     r = client.get("/stocks?sort_order=invalid")
     assert r.status_code == 422
+
+
+def test_stock_search_pagination(client, db_path):
+    init_db()
+    with SessionLocal() as s:
+        for i in range(25):
+            s.add(Stock(code=f"sz{i:06d}", name=f"测试股{i}"))
+        s.add(Stock(code="sz999999", name="测试退市股", delisted_at="2025-01-01"))
+        s.commit()
+
+    # 默认第一页
+    r = client.get("/stocks/search?q=测试")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 25
+    assert body["page"] == 1
+    assert body["pageSize"] == 30
+    assert len(body["data"]) == 25
+
+    # 自定义分页：第二页
+    r2 = client.get("/stocks/search?q=测试&page=2&page_size=10")
+    assert r2.status_code == 200
+    b2 = r2.json()
+    assert b2["total"] == 25
+    assert b2["page"] == 2
+    assert b2["pageSize"] == 10
+    assert len(b2["data"]) == 10
+
+    # 两页数据不重复、合计覆盖全部
+    r1 = client.get("/stocks/search?q=测试&page=1&page_size=10")
+    codes_p1 = {d["code"] for d in r1.json()["data"]}
+    codes_p2 = {d["code"] for d in r2.json()["data"]}
+    assert codes_p1.isdisjoint(codes_p2)
+
+    # 排除退市股
+    all_codes = set()
+    for p in (1, 2, 3):
+        page = client.get(f"/stocks/search?q=测试&page={p}&page_size=10").json()
+        all_codes.update(d["code"] for d in page["data"])
+    assert "sz999999" not in all_codes
+    assert len(all_codes) == 25

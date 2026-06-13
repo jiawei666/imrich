@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -22,6 +23,8 @@ from app.models import (
     Stock,
 )
 from app.data.resample import resample_ohlcv
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MIN_CAP = 0  # 不限制市值
 
@@ -286,9 +289,15 @@ def _refresh_industry_index(
     step = group.steps[2]
     industries = industries_fn()
     step.total = len(industries)
-    with SessionLocal() as s:
-        for i, industry in enumerate(tqdm(industries, desc="申万行业指数"), 1):
+    for i, industry in enumerate(tqdm(industries, desc="申万行业指数"), 1):
+        try:
             hist = industry_hist_fn(industry["code"])
+            constituents = constituents_fn(industry["code"])
+        except Exception:
+            logger.warning("申万行业 %s(%s) 抓取失败，跳过", industry["name"], industry["code"], exc_info=True)
+            step.done = i
+            continue
+        with SessionLocal() as s:
             for row in hist.to_dict("records"):
                 obj = (
                     s.query(IndustryIndex)
@@ -304,14 +313,14 @@ def _refresh_industry_index(
                 obj.high = float(row["high"])
                 obj.low = float(row["low"])
                 obj.volume = float(row["volume"])
-            for code in constituents_fn(industry["code"]):
+            for code in constituents:
                 stock = s.get(Stock, code)
                 if stock is None:
                     stock = Stock(code=code, name="", is_st=False, is_bj=code.startswith("bj"))
                     s.add(stock)
                 stock.industry = industry["name"]
-            step.done = i
-        s.commit()
+            s.commit()
+        step.done = i
     step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
     step.elapsed = "00:00"
 
@@ -476,56 +485,63 @@ def get_status_snapshot() -> dict:
     result = {k: _grp(v) for k, v in STATE.items()}
 
     # 只在没有活跃任务时用数据库回填进度（兜底，避免进程重启后丢失）
+    # 如果数据库被写锁占用（并发刷新），跳过回填，下次轮询再试
     if result["kline"]["status"] != "running":
-        with SessionLocal() as s:
-            stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
-            kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
+        try:
+            with SessionLocal() as s:
+                stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
+                kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
 
-        kline_steps = result["kline"]["steps"]
+            kline_steps = result["kline"]["steps"]
 
-        if stock_count > 0:
-            kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
-            kline_steps[0]["done"] = stock_count
-            kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
+            if stock_count > 0:
+                kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
+                kline_steps[0]["done"] = stock_count
+                kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
 
-        if stock_count > 0:
-            kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
-            kline_steps[1]["done"] = kline_stock_count
-            kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
+            if stock_count > 0:
+                kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
+                kline_steps[1]["done"] = kline_stock_count
+                kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
+        except Exception:
+            pass
 
     if result["fundamental"]["status"] != "running":
-        with SessionLocal() as s:
-            report_count = s.query(FinancialReport).count()
-            forecast_count = s.query(Forecast).count()
-            industry_count = s.query(IndustryIndex).group_by(IndustryIndex.code).count()
-            research_meta_count = s.query(ResearchReport).filter(ResearchReport.stage == "metadata").count()
-            research_parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
+        try:
+            with SessionLocal() as s:
+                report_count = s.query(FinancialReport).count()
+                forecast_count = s.query(Forecast).count()
+                industry_count = s.query(IndustryIndex).group_by(IndustryIndex.code).count()
+                research_meta_count = s.query(ResearchReport).filter(ResearchReport.stage == "metadata").count()
+                research_parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
 
-        f_steps = result["fundamental"]["steps"]
+            f_steps = result["fundamental"]["steps"]
 
-        if report_count > 0:
-            f_steps[0]["total"] = max(f_steps[0]["total"], report_count)
-            f_steps[0]["done"] = report_count
-            f_steps[0]["progress"] = 100
+            if report_count > 0:
+                f_steps[0]["total"] = max(f_steps[0]["total"], report_count)
+                f_steps[0]["done"] = report_count
+                f_steps[0]["progress"] = 100
 
-        if forecast_count > 0:
-            f_steps[1]["total"] = max(f_steps[1]["total"], forecast_count)
-            f_steps[1]["done"] = forecast_count
-            f_steps[1]["progress"] = 100
+            if forecast_count > 0:
+                f_steps[1]["total"] = max(f_steps[1]["total"], forecast_count)
+                f_steps[1]["done"] = forecast_count
+                f_steps[1]["progress"] = 100
 
-        if industry_count > 0:
-            f_steps[2]["total"] = max(f_steps[2]["total"], industry_count)
-            f_steps[2]["done"] = industry_count
-            f_steps[2]["progress"] = 100
+            if industry_count > 0:
+                f_steps[2]["total"] = max(f_steps[2]["total"], industry_count)
+                f_steps[2]["done"] = industry_count
+                f_steps[2]["progress"] = 100
 
-        if research_meta_count > 0:
-            f_steps[3]["total"] = max(f_steps[3]["total"], research_meta_count)
-            f_steps[3]["done"] = research_meta_count
-            f_steps[3]["progress"] = 100
+            if research_meta_count > 0:
+                f_steps[3]["total"] = max(f_steps[3]["total"], research_meta_count)
+                f_steps[3]["done"] = research_meta_count
+                f_steps[3]["progress"] = 100
 
-        if research_parsed_count > 0:
-            f_steps[4]["total"] = max(f_steps[4]["total"], research_parsed_count)
-            f_steps[4]["done"] = research_parsed_count
-            f_steps[4]["progress"] = 100
+            if research_parsed_count > 0:
+                f_steps[4]["total"] = max(f_steps[4]["total"], research_parsed_count)
+                f_steps[4]["done"] = research_parsed_count
+                f_steps[4]["progress"] = 100
+        except Exception:
+            pass
 
     return result

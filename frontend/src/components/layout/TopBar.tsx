@@ -1,8 +1,8 @@
-import { Check, Loader2, RotateCw } from 'lucide-react'
+import { AlertCircle, Check, Loader2, RotateCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Wordmark } from './Logo'
 import { ProgressBar } from '@/components/ui/progress'
-import type { RefreshStatus, StrategyId } from '@/types'
+import type { ActivityItem, RefreshStatus, StrategyId } from '@/types'
 import { STRATEGY_CATEGORY } from '@/types'
 
 function InlineProgress({ label, step }: { label: string; step: { progress: number; done: number; total: number } | undefined }) {
@@ -25,16 +25,44 @@ function InlineProgress({ label, step }: { label: string; step: { progress: numb
   )
 }
 
+// 实时动态：后台任务（如技术面筛选）状态徽标，与上方刷新进度的纯文字样式区分
+function ActivityPill({ item }: { item: ActivityItem }) {
+  if (item.status === 'running') {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-paper-2 px-3 py-1 text-[12px] text-brand">
+        <Loader2 className="size-3 animate-spin" />
+        {item.label}中...
+      </span>
+    )
+  }
+  if (item.status === 'error') {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-paper-2 px-3 py-1 text-[12px] text-down">
+        <AlertCircle className="size-3" />
+        {item.label}失败{item.detail ? ` · ${item.detail}` : ''}
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1.5 rounded-full bg-paper-2 px-3 py-1 text-[12px] text-up">
+      <Check className="size-3" />
+      {item.label}完成{item.detail ? ` · ${item.detail}` : ''}
+    </span>
+  )
+}
+
 export function TopBar({
   updatedAt,
   strategy,
   refreshStatus,
+  activities,
   onRefreshKline,
   onRefreshFundamental,
 }: {
   updatedAt: string
   strategy: StrategyId
   refreshStatus?: RefreshStatus
+  activities: ActivityItem[]
   onRefreshKline: (reloadStockList: boolean) => void
   onRefreshFundamental: () => void
 }) {
@@ -52,6 +80,11 @@ export function TopBar({
       <Wordmark className="h-9 w-auto" />
 
       <div className="ml-auto flex items-center gap-3">
+        {/* 实时动态：后台任务进行中/完成状态 */}
+        <div className="flex items-center gap-2">
+          {activities.map((item) => <ActivityPill key={item.id} item={item} />)}
+        </div>
+
         {/* 进度信息 */}
         {isTechnical ? (
           <div className="flex items-center gap-3">

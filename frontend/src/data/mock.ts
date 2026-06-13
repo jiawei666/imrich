@@ -138,6 +138,7 @@ export const REFRESH_STATUS: RefreshStatus = {
   kline: {
     status: 'done',
     updatedAt: '2025-06-16 10:30:00',
+    error: null,
     steps: [
       { label: '股票列表', done: 2500, total: 2500, elapsed: '00:18', progress: 100 },
       { label: 'K线数据（日+周+月+季）', done: 2500, total: 2500, elapsed: '03:42', progress: 100 },
@@ -146,6 +147,7 @@ export const REFRESH_STATUS: RefreshStatus = {
   fundamental: {
     status: 'idle',
     updatedAt: null,
+    error: null,
     steps: [
       { label: '财报数据', done: 0, total: 0, elapsed: '00:00', progress: 0 },
       { label: '业绩预告快报', done: 0, total: 0, elapsed: '00:00', progress: 0 },
