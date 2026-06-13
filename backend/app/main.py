@@ -78,6 +78,53 @@ async def refresh_fundamental():
     return {"status": "accepted"}
 
 
+FUNDAMENTAL_STEP_DEPS = {
+    "research-pdfs": ("research-meta", "请先刷新研报元数据"),
+}
+
+FUNDAMENTAL_STEP_MAP = {
+    "financial": 0, "forecasts": 1, "industry": 2,
+    "research-meta": 3, "research-pdfs": 4,
+}
+
+
+@app.post("/refresh/fundamental/{step}", status_code=202)
+async def refresh_fundamental_step(step: str):
+    """单步刷新基本面数据。"""
+    # 依赖检查
+    if step in FUNDAMENTAL_STEP_DEPS:
+        dep_step, msg = FUNDAMENTAL_STEP_DEPS[step]
+        dep_idx = FUNDAMENTAL_STEP_MAP.get(dep_step)
+        if dep_idx is not None and refresh.STATE["fundamental"].steps[dep_idx].status != "done":
+            raise HTTPException(status_code=409, detail=msg)
+
+    # 步骤名检查
+    idx = FUNDAMENTAL_STEP_MAP.get(step)
+    if idx is None:
+        raise HTTPException(status_code=404, detail=f"未知步骤: {step}")
+
+    # 重复触发检查
+    if refresh.STATE["fundamental"].steps[idx].status == "running":
+        raise HTTPException(status_code=409, detail="该步骤正在执行中")
+
+    # 分发执行
+    dispatch = {
+        "financial": lambda: refresh.run_financial_refresh(),
+        "forecasts": lambda: refresh.run_forecasts_refresh(),
+        "industry": lambda: refresh.run_industry_refresh(),
+        "research-meta": lambda: refresh.run_research_meta_refresh(),
+        "research-pdfs": lambda: refresh.run_research_pdfs_refresh(
+            candidate_screen_fn=run_fundamental_screen,
+            research_download_fn=download_pdf,
+            research_parse_fn=parse_pdf_text,
+        ),
+    }
+    t = asyncio.create_task(asyncio.to_thread(dispatch[step]))
+    _refresh_tasks.add(t)
+    t.add_done_callback(_refresh_tasks.discard)
+    return {"status": "accepted"}
+
+
 @app.get("/refresh/status")
 def refresh_status():
     return refresh.get_status_snapshot()
