@@ -107,20 +107,30 @@ export default function App() {
     api.refreshFundamental().catch(() => {})
   }
 
-  const prevStatusRef = useRef<{ kline?: string; fundamental?: string }>({})
+  const triggerRefreshFundamentalStep = (step: string) => {
+    api.refreshFundamentalStep(step).catch(() => {})
+  }
+
+  const prevStatusRef = useRef<{ kline?: string; fundamentalSteps?: string[] }>({})
 
   useEffect(() => {
     const close = api.refreshStatusStream((status) => {
       setRefreshStatus(status)
       const prev = prevStatusRef.current
+      // kline 整体状态变化时 reloadMeta
       if (prev.kline === 'running' && status.kline.status !== 'running') {
         reloadMeta()
       }
-      if (prev.fundamental === 'running' && status.fundamental.status !== 'running') {
-        reloadMeta()
+      // fundamental 任意步骤从 running 变为非 running 时 reloadMeta
+      if (prev.fundamentalSteps) {
+        for (let i = 0; i < status.fundamental.steps.length; i++) {
+          if (prev.fundamentalSteps[i] === 'running' && status.fundamental.steps[i].status !== 'running') {
+            reloadMeta()
+          }
+        }
       }
       prev.kline = status.kline.status
-      prev.fundamental = status.fundamental.status
+      prev.fundamentalSteps = status.fundamental.steps.map(s => s.status)
     })
     return close
   }, [])
@@ -142,6 +152,7 @@ export default function App() {
           activities={activities}
           onRefreshKline={triggerRefreshKline}
           onRefreshFundamental={triggerRefreshFundamental}
+          onRefreshFundamentalStep={triggerRefreshFundamentalStep}
         />
 
         {isTechnical ? (

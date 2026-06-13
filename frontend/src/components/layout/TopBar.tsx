@@ -5,25 +5,54 @@ import { ProgressBar } from '@/components/ui/progress'
 import type { ActivityItem, RefreshStatus, StrategyId } from '@/types'
 import { STRATEGY_CATEGORY } from '@/types'
 
-function InlineProgress({ label, step }: { label: string; step: { progress: number; done: number; total: number } | undefined }) {
+function InlineProgress({
+  label,
+  step,
+}: {
+  label: string
+  step: { status?: string; error?: string | null; progress: number; done: number; total: number } | undefined
+}) {
   if (!step) return null
-  if (step.total === 0) {
+  const status = step.status ?? 'idle'
+
+  if (status === 'idle' && step.total === 0) {
     return <span className="text-[12px] text-ink-faint">{label}: 待执行</span>
   }
-  if (step.progress >= 100 && step.done > 0) {
-    return <span className="flex items-center gap-1 text-[12px] text-up">{label}: 已完成 <Check className="size-3" /></span>
-  }
-  // running
-  return (
-    <span className="flex items-center gap-2 text-[12px]">
-      <span className="flex items-center gap-1 text-brand">
-        <Loader2 className="size-3 animate-spin" />
-        {label}: {step.progress}%
+  if (status === 'done') {
+    return (
+      <span className="flex items-center gap-1 text-[12px] text-down">
+        {label}: 已完成 <Check className="size-3" />
       </span>
-      <ProgressBar value={step.progress} className="w-16" />
+    )
+  }
+  if (status === 'error') {
+    return (
+      <span className="flex items-center gap-1 text-[12px] text-down" title={step.error ?? undefined}>
+        <AlertCircle className="size-3" />
+        {label}失败
+      </span>
+    )
+  }
+  if (status === 'running') {
+    return (
+      <span className="flex items-center gap-2 text-[12px]">
+        <span className="flex items-center gap-1 text-brand">
+          <Loader2 className="size-3 animate-spin" />
+          {label}: {step.progress}%
+        </span>
+        <ProgressBar value={step.progress} className="w-16" />
+      </span>
+    )
+  }
+  // idle with data（旧数据回填显示）
+  return (
+    <span className="flex items-center gap-1 text-[12px] text-down">
+      {label}: 已完成 <Check className="size-3" />
     </span>
   )
 }
+
+const FUNDAMENTAL_STEP_KEYS = ['financial', 'forecasts', 'industry', 'research-meta', 'research-pdfs'] as const
 
 // 实时动态：后台任务（如技术面筛选）状态徽标，与上方刷新进度的纯文字样式区分
 function ActivityPill({ item }: { item: ActivityItem }) {
@@ -58,6 +87,7 @@ export function TopBar({
   activities,
   onRefreshKline,
   onRefreshFundamental,
+  onRefreshFundamentalStep,
 }: {
   updatedAt: string
   strategy: StrategyId
@@ -65,6 +95,7 @@ export function TopBar({
   activities: ActivityItem[]
   onRefreshKline: (reloadStockList: boolean) => void
   onRefreshFundamental: () => void
+  onRefreshFundamentalStep?: (step: string) => void
 }) {
   const isTechnical = STRATEGY_CATEGORY[strategy] === 'technical'
   const klineGroup = refreshStatus?.kline
@@ -94,7 +125,17 @@ export function TopBar({
         ) : (
           <div className="flex items-center gap-3">
             {fundamentalSteps?.map((step, i) => (
-              <InlineProgress key={i} label={step.label} step={step} />
+              <div key={i} className="flex items-center gap-1">
+                <InlineProgress label={step.label} step={step} />
+                <button
+                  onClick={() => onRefreshFundamentalStep?.(FUNDAMENTAL_STEP_KEYS[i])}
+                  disabled={step.status === 'running' || (i === 4 && fundamentalSteps?.[3]?.status !== 'done')}
+                  title={i === 4 && fundamentalSteps?.[3]?.status !== 'done' ? '请先刷新研报元数据' : `刷新${step.label}`}
+                  className="ml-0.5 text-ink-soft hover:text-ink transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <RotateCw className="size-3" />
+                </button>
+              </div>
             ))}
           </div>
         )}
