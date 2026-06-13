@@ -86,7 +86,10 @@ def run_fundamental_screen_from_rows(preset_id: str, rows: list[dict], params: d
         if _has_common_risk(row):
             continue
         if preset_id == "super-growth":
-            if not (row.get("high_growth") and row.get("price_new_high") and row.get("research_signals")):
+            if not (
+                row.get("high_growth") and row.get("price_new_high") and row.get("research_signals")
+                and (row.get("revenueYoY") or 0) > params.get("revenueYoY", 20)
+            ):
                 continue
         elif preset_id == "oversold-bluechip":
             if row.get("risk_industry_down") or not row.get("oversold"):
