@@ -132,11 +132,19 @@ interface StockListCardProps {
 
 **改为**：
 - `stockData: StockRow[]` + `stockTotal: number` 统一状态
-- `dataSource: 'market' | 'screen' | 'history'` 轻量标记（仅用于决定清除按钮文案等 UI 细节）
+- 不再使用模式标记，UI 状态通过其他状态推导：
+  - 是否有搜索关键词 → 决定搜索清除按钮显示
+  - `selectedHistoryDate` 是否有值 → 决定历史清除按钮显示
+  - `stockData` 是否包含 `diagnostics` → 决定筛选诊断信息列是否显示
 - 「运行筛选」→ 调用 `/screen/result?preset=xx&params=xx`，结果写入 `stockData`
 - 选择历史日期 → 调用 `/screen/result?preset=xx&history_date=xx`，结果写入 `stockData`
-- 清除筛选/搜索 → 调用 `/stocks`，结果写入 `stockData`
+- 清除筛选/搜索 → 调用 `/stocks`，结果写入 `stockData`，清空搜索词和历史日期
 - 组件挂载时加载 `/stocks` + `/screen/history?preset=xx`
+
+**排序行为**：
+- 全市场模式：服务端排序（code/name/market_cap），支持分页
+- 搜索模式：不提供排序（结果量少，一次返回）
+- 筛选/历史结果：客户端排序（涨跌幅/收盘价），全量展示
 
 ### api.ts
 
