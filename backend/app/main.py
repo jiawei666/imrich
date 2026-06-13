@@ -132,6 +132,25 @@ def screen_history_detail(date: str, preset: str):
     return result
 
 
+@app.get("/screen/result")
+def screen_result(
+    preset: str,
+    params: str = Query(default=None),
+    history_date: str = Query(default=None, alias="history_date"),
+):
+    from app.screen import run_screen_result
+    try:
+        parsed = json.loads(params) if params else None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="params 不是合法 JSON")
+    if parsed is not None and history_date is not None:
+        raise HTTPException(status_code=400, detail="params 和 history_date 不可同时传入")
+    try:
+        return run_screen_result(preset, parsed, history_date)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/stock/{code}/kline")
 def stock_kline(code: str, period: str = "day"):
     try:

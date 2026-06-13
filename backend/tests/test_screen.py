@@ -157,3 +157,49 @@ def test_list_and_get_screen_snapshots(db_path):
     assert isinstance(detail, list)
 
     assert get_screen_snapshot("b2", "2099-01-01") is None
+
+
+def test_screen_result_with_params(client, db_path):
+    init_db()
+    closes = [20 - i * 0.4 for i in range(40)] + [(20 - 39 * 0.4) * 1.06]
+    vols = [1000.0] * 40 + [5000.0]
+    _seed_with_date("sz000001", closes, vols)
+
+    r = client.get("/screen/result?preset=b2&params={}")
+    assert r.status_code == 200
+    body = r.json()
+    assert "items" in body
+    assert "total" in body
+    if body["items"]:
+        item = body["items"][0]
+        assert "code" in item
+        assert "name" in item
+        assert "industry" in item
+        assert "market_cap" in item
+        assert "close" in item
+        assert "pct_chg" in item
+
+
+def test_screen_result_with_history_date(client, db_path):
+    init_db()
+    closes = [20 - i * 0.4 for i in range(40)] + [(20 - 39 * 0.4) * 1.06]
+    vols = [1000.0] * 40 + [5000.0]
+    _seed_with_date("sz000001", closes, vols)
+
+    # 先运行一次以生成快照
+    run_technical_screen("b2", {})
+    from app.screen import list_screen_snapshots
+    history = list_screen_snapshots("b2")
+    assert len(history) > 0
+
+    date = history[0]["date"]
+    r = client.get(f"/screen/result?preset=b2&history_date={date}")
+    assert r.status_code == 200
+    body = r.json()
+    assert "items" in body
+    assert body["total"] >= 0
+
+
+def test_screen_result_rejects_both_params(client, db_path):
+    r = client.get("/screen/result?preset=b2&params={}&history_date=2025-01-01")
+    assert r.status_code == 400

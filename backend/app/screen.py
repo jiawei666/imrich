@@ -160,3 +160,48 @@ def run_screen(preset_id: str, params: Dict[str, Any]) -> List[dict]:
     if preset_id in TECHNICAL_PRESETS:
         return run_technical_screen(preset_id, params)
     raise KeyError(f"未知预设: {preset_id}")
+
+
+def run_screen_result(preset_id: str, params: dict | None = None, history_date: str | None = None) -> dict:
+    """统一筛选结果入口，返回 ScreenResultResponse 格式。
+
+    - 有 params → 运行筛选
+    - 有 history_date → 返回历史快照
+    - 两者互斥
+    """
+    from app.db import SessionLocal as _SL
+    from app.models import Stock as _Stock
+
+    if params is not None and history_date is not None:
+        raise ValueError("params 和 history_date 不可同时传入")
+
+    if history_date is not None:
+        candidates = get_screen_snapshot(preset_id, history_date)
+        if candidates is None:
+            return {"items": [], "total": 0}
+    else:
+        candidates = run_screen(preset_id, params or {})
+
+    # 补充 market_cap
+    codes = [c["code"] for c in candidates]
+    cap_map: dict[str, float | None] = {}
+    if codes:
+        with _SL() as s:
+            for row in s.query(_Stock.code, _Stock.market_cap).filter(_Stock.code.in_(codes)).all():
+                cap_map[row.code] = row.market_cap
+
+    items = []
+    for c in candidates:
+        items.append({
+            "code": c["code"],
+            "name": c["name"],
+            "industry": c.get("industry") or None,
+            "market_cap": cap_map.get(c["code"]),
+            "close": c.get("close"),
+            "pct_chg": c.get("pctChg"),
+            "diagnostics": c.get("diagnostics"),
+            "sort_key": c.get("sortKey"),
+            "trigger_date": c.get("triggerDate"),
+        })
+
+    return {"items": items, "total": len(items)}
