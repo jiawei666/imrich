@@ -13,7 +13,6 @@ from app.presets import get_presets
 from app.screen import run_screen
 from app.kline_service import get_stock_kline
 from app.stock_detail import get_stock_detail
-from app.fundamental_screen import run_fundamental_screen
 from app.meta import get_meta
 
 app = FastAPI(title="i'mRich 选股器")
@@ -68,7 +67,6 @@ async def refresh_fundamental():
         asyncio.to_thread(
             refresh.run_fundamental_refresh,
             research_meta_fn=fetch_research_metadata,
-            candidate_screen_fn=run_fundamental_screen,
             research_download_fn=download_pdf,
             research_parse_fn=parse_pdf_text,
         )
@@ -114,7 +112,6 @@ async def refresh_fundamental_step(step: str):
         "industry": lambda: refresh.run_industry_refresh(),
         "research-meta": lambda: refresh.run_research_meta_refresh(),
         "research-pdfs": lambda: refresh.run_research_pdfs_refresh(
-            candidate_screen_fn=run_fundamental_screen,
             research_download_fn=download_pdf,
             research_parse_fn=parse_pdf_text,
         ),
@@ -150,6 +147,15 @@ async def refresh_status_stream(request: Request):
 @app.get("/meta")
 def meta():
     return get_meta()
+
+
+@app.get("/indices")
+def list_indices():
+    from app.models import IndexConstituent
+    from app.db import SessionLocal
+    with SessionLocal() as s:
+        rows = s.query(IndexConstituent.index_code, IndexConstituent.index_name).distinct().all()
+    return [{"indexCode": r.index_code, "indexName": r.index_name} for r in rows]
 
 
 @app.get("/screen")
