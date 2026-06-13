@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, List, Optional
 
 import pandas as pd
@@ -27,6 +28,11 @@ from app.data.resample import resample_ohlcv
 logger = logging.getLogger(__name__)
 
 DEFAULT_MIN_CAP = 0  # 不限制市值
+
+# 研报抓取/下载的并发度：I/O 等待为主，适度并发可大幅缩短全量股票的耗时；
+# 同时控制在较小值以避免触发数据源的限速/封禁。
+RESEARCH_META_WORKERS = 8
+RESEARCH_PDF_WORKERS = 4
 
 
 @dataclass
@@ -54,8 +60,8 @@ def _new_state():
             RefreshStep("股票列表"), RefreshStep("K线数据（日+周+月+季）")]),
         "fundamental": RefreshGroup(steps=[
             RefreshStep("财报数据"), RefreshStep("业绩预告快报"),
-            RefreshStep("申万行业指数"), RefreshStep("研报-全市场元数据"),
-            RefreshStep("研报-候选池解析")]),
+            RefreshStep("申万行业指数"), RefreshStep("研报元数据"),
+            RefreshStep("研报PDF解析")]),
     }
 
 
@@ -134,10 +140,11 @@ def run_kline_refresh(
                     current_codes.add(r["code"])
                     obj = s.get(Stock, r["code"])
                     if obj is None:
-                        obj = Stock(code=r["code"])
+                        obj = Stock(code=r["code"], is_bj=r["code"].startswith("bj"))
                         s.add(obj)
                     obj.name = r["name"]
                     obj.market_cap = r.get("market_cap")
+                    obj.is_bj = r["code"].startswith("bj")
                     obj.delisted_at = None
                     obj.updated_at = now
                 # 退市软删除
@@ -203,46 +210,61 @@ def run_kline_refresh(
 
 
 def _latest_report_date(now: Optional[datetime] = None) -> str:
+    return _recent_report_dates(now)[-1]
+
+
+def _recent_report_dates(now: Optional[datetime] = None) -> list[str]:
+    """返回最近两年（8 个季度）的 report_date 列表，从早到晚排列。
+
+    例如 2026-06 → ["20240331", "20240630", "20240930", "20241231",
+                      "20250331", "20250630", "20250930", "20251231"]
+    """
     now = now or datetime.now()
-    year = now.year
-    quarter_ends = [("1231", datetime(year - 1, 12, 31)), ("0331", datetime(year, 3, 31)),
-                    ("0630", datetime(year, 6, 30)), ("0930", datetime(year, 9, 30)),
-                    ("1231", datetime(year, 12, 31))]
-    latest = "1231"
-    latest_year = year - 1
-    for suffix, dt in quarter_ends:
-        if now >= dt:
-            latest = suffix
-            latest_year = dt.year
-    return f"{latest_year}{latest}"
+    # 所有可能的季度截止日（year-2 Q1 … year Q4）
+    dates: list[str] = []
+    for y in (now.year - 2, now.year - 1, now.year):
+        for suffix, dt in [("0331", datetime(y, 3, 31)), ("0630", datetime(y, 6, 30)),
+                           ("0930", datetime(y, 9, 30)), ("1231", datetime(y, 12, 31))]:
+            if now >= dt:
+                dates.append(f"{y}{suffix}")
+    # 只取最近 8 个
+    return dates[-8:]
 
 
 def _refresh_financial_reports(group: RefreshGroup, financial_fn: Callable[[str], list]) -> None:
     step = group.steps[0]
-    report_date = _latest_report_date()
-    rows = financial_fn(report_date)
-    step.total = len(rows)
+    report_dates = _recent_report_dates()
+    n_periods = len(report_dates)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with SessionLocal() as s:
-        for i, row in enumerate(tqdm(rows, desc="财报数据"), 1):
-            obj = (
-                s.query(FinancialReport)
-                .filter_by(code=row["code"], report_date=row["report_date"])
-                .one_or_none()
-            )
-            if obj is None:
-                obj = FinancialReport(code=row["code"], report_date=row["report_date"])
-                s.add(obj)
-                s.flush()
-            obj.net_profit = row.get("net_profit")
-            obj.net_profit_yoy = row.get("net_profit_yoy")
-            obj.revenue = row.get("revenue")
-            obj.revenue_yoy = row.get("revenue_yoy")
-            obj.gross_margin = row.get("gross_margin")
-            obj.updated_at = now
-            step.done = i
-        s.commit()
-    step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
+    total_rows = 0
+    step.done = 0
+    step.total = 0
+    step.progress = 0
+    for period_idx, rd in enumerate(report_dates, 1):
+        rows = financial_fn(rd)
+        with SessionLocal() as s:
+            for i, row in enumerate(tqdm(rows, desc=f"财报数据 {rd}"), 1):
+                obj = (
+                    s.query(FinancialReport)
+                    .filter_by(code=row["code"], report_date=row["report_date"])
+                    .one_or_none()
+                )
+                if obj is None:
+                    obj = FinancialReport(code=row["code"], report_date=row["report_date"])
+                    s.add(obj)
+                    s.flush()
+                obj.net_profit = row.get("net_profit")
+                obj.net_profit_yoy = row.get("net_profit_yoy")
+                obj.revenue = row.get("revenue")
+                obj.revenue_yoy = row.get("revenue_yoy")
+                obj.gross_margin = row.get("gross_margin")
+                obj.updated_at = now
+                step.done = total_rows + i
+            s.commit()
+        total_rows += len(rows)
+        step.total = total_rows  # 预估总数随每期更新
+        step.progress = int(period_idx / n_periods * 100)
+    step.progress = 100
     step.elapsed = "00:00"
 
 
@@ -252,35 +274,43 @@ def _refresh_forecasts(
     express_fn: Callable[[str], list],
 ) -> None:
     step = group.steps[1]
-    report_date = _latest_report_date()
-    rows = forecast_fn(report_date) + express_fn(report_date)
-    step.total = len(rows)
+    report_dates = _recent_report_dates()
+    n_periods = len(report_dates)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with SessionLocal() as s:
-        for i, row in enumerate(tqdm(rows, desc="业绩预告快报"), 1):
-            obj = (
-                s.query(Forecast)
-                .filter_by(code=row["code"], report_date=row["report_date"], source=row["source"], indicator=row.get("indicator"))
-                .one_or_none()
-            )
-            if obj is None:
-                obj = Forecast(code=row["code"], report_date=row["report_date"], source=row["source"], indicator=row.get("indicator"))
-                s.add(obj)
-                s.flush()
-            obj.indicator = row.get("indicator")
-            obj.change_desc = row.get("change_desc")
-            obj.change_pct = row.get("change_pct")
-            obj.forecast_value = row.get("forecast_value")
-            obj.prior_value = row.get("prior_value")
-            obj.net_profit = row.get("net_profit")
-            obj.net_profit_yoy = row.get("net_profit_yoy")
-            obj.revenue = row.get("revenue")
-            obj.revenue_yoy = row.get("revenue_yoy")
-            obj.notice_date = row.get("notice_date")
-            obj.updated_at = now
-            step.done = i
-        s.commit()
-    step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
+    total_rows = 0
+    step.done = 0
+    step.total = 0
+    step.progress = 0
+    for period_idx, rd in enumerate(report_dates, 1):
+        rows = forecast_fn(rd) + express_fn(rd)
+        with SessionLocal() as s:
+            for i, row in enumerate(tqdm(rows, desc=f"业绩预告快报 {rd}"), 1):
+                obj = (
+                    s.query(Forecast)
+                    .filter_by(code=row["code"], report_date=row["report_date"], source=row["source"], indicator=row.get("indicator"))
+                    .one_or_none()
+                )
+                if obj is None:
+                    obj = Forecast(code=row["code"], report_date=row["report_date"], source=row["source"], indicator=row.get("indicator"))
+                    s.add(obj)
+                    s.flush()
+                obj.indicator = row.get("indicator")
+                obj.change_desc = row.get("change_desc")
+                obj.change_pct = row.get("change_pct")
+                obj.forecast_value = row.get("forecast_value")
+                obj.prior_value = row.get("prior_value")
+                obj.net_profit = row.get("net_profit")
+                obj.net_profit_yoy = row.get("net_profit_yoy")
+                obj.revenue = row.get("revenue")
+                obj.revenue_yoy = row.get("revenue_yoy")
+                obj.notice_date = row.get("notice_date")
+                obj.updated_at = now
+                step.done = total_rows + i
+            s.commit()
+        total_rows += len(rows)
+        step.total = total_rows
+        step.progress = int(period_idx / n_periods * 100)
+    step.progress = 100
     step.elapsed = "00:00"
 
 
@@ -293,6 +323,8 @@ def _refresh_industry_index(
     step = group.steps[2]
     industries = industries_fn()
     step.total = len(industries)
+    step.done = 0
+    step.progress = 0
     for i, industry in enumerate(tqdm(industries, desc="申万行业指数"), 1):
         try:
             hist = industry_hist_fn(industry["code"])
@@ -300,6 +332,7 @@ def _refresh_industry_index(
         except Exception:
             logger.warning("申万行业 %s(%s) 抓取失败，跳过", industry["name"], industry["code"], exc_info=True)
             step.done = i
+            step.progress = int(i / step.total * 100) if step.total else 100
             continue
         with SessionLocal() as s:
             for row in hist.to_dict("records"):
@@ -326,7 +359,8 @@ def _refresh_industry_index(
                 stock.industry = industry["name"]
             s.commit()
         step.done = i
-    step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
+        step.progress = int(i / step.total * 100) if step.total else 100
+    step.progress = 100
     step.elapsed = "00:00"
 
 
@@ -399,8 +433,14 @@ def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents
         raise
 
 
+def _all_stock_codes() -> list[str]:
+    """全量未退市股票代码，按代码排序，不做选股过滤。"""
+    with SessionLocal() as s:
+        return sorted(obj.code for obj in s.query(Stock).filter(Stock.delisted_at.is_(None)).all())
+
+
 def run_research_meta_refresh(research_meta_fn=None):
-    """独立执行步骤4：研报元数据刷新。"""
+    """独立执行步骤4：研报元数据刷新（全量未退市股票）。"""
     if research_meta_fn is None:
         from app.data.fetch_research import fetch_research_metadata
         research_meta_fn = fetch_research_metadata
@@ -411,7 +451,8 @@ def run_research_meta_refresh(research_meta_fn=None):
     step.status = "running"
     step.error = None
     try:
-        refresh_research_metadata(research_meta_fn, group=group)
+        codes = _all_stock_codes()
+        refresh_research_metadata(research_meta_fn, codes, group=group)
         step.status = "done"
     except Exception as e:
         step.status = "error"
@@ -419,15 +460,12 @@ def run_research_meta_refresh(research_meta_fn=None):
         raise
 
 
-def run_research_pdfs_refresh(candidate_screen_fn=None, research_download_fn=None, research_parse_fn=None, research_directory=None):
-    """独立执行步骤5：研报PDF解析刷新。依赖步骤4完成。"""
+def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None, research_directory=None):
+    """独立执行步骤5：研报PDF解析刷新（近一年研报）。依赖步骤4完成。"""
     group = STATE["fundamental"]
     step4 = group.steps[3]
     if step4.status != "done":
         raise RuntimeError("请先刷新研报元数据")
-    if candidate_screen_fn is None:
-        from app.fundamental_screen import run_fundamental_screen
-        candidate_screen_fn = run_fundamental_screen
     if research_download_fn is None:
         from app.data.fetch_research import download_pdf
         research_download_fn = download_pdf
@@ -442,10 +480,7 @@ def run_research_pdfs_refresh(candidate_screen_fn=None, research_download_fn=Non
     step.status = "running"
     step.error = None
     try:
-        candidate_codes = [row["code"] for row in candidate_screen_fn("super-growth", {})[:200]]
-        candidate_codes += [row["code"] for row in candidate_screen_fn("oversold-bluechip", {})[:200]]
         refresh_research_pdfs(
-            sorted(set(candidate_codes)),
             research_directory,
             download_fn=research_download_fn,
             parse_fn=research_parse_fn,
@@ -461,14 +496,14 @@ def run_research_pdfs_refresh(candidate_screen_fn=None, research_download_fn=Non
 def run_fundamental_refresh(
     financial_fn=None, forecast_fn=None, express_fn=None,
     industries_fn=None, industry_hist_fn=None, constituents_fn=None,
-    research_meta_fn=None, candidate_screen_fn=None,
+    research_meta_fn=None,
     research_download_fn=None, research_parse_fn=None,
     research_directory=None,
 ) -> None:
     """一键全刷：步骤1/2/3并发，4→5串行。"""
     include_research = any(
         fn is not None
-        for fn in (research_meta_fn, candidate_screen_fn, research_download_fn, research_parse_fn)
+        for fn in (research_meta_fn, research_download_fn, research_parse_fn)
     )
     group = STATE["fundamental"]
     group.status = "running"
@@ -491,7 +526,7 @@ def run_fundamental_refresh(
 
         if include_research:
             run_research_meta_refresh(research_meta_fn)
-            run_research_pdfs_refresh(candidate_screen_fn, research_download_fn, research_parse_fn, research_directory)
+            run_research_pdfs_refresh(research_download_fn, research_parse_fn, research_directory)
 
         group.status = "done"
         group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -501,63 +536,116 @@ def run_fundamental_refresh(
         raise
 
 
-def refresh_research_metadata(fetch_fn: Callable[[], list[dict]], group: Optional[RefreshGroup] = None) -> None:
-    rows = fetch_fn()
+def _fetch_research_metadata_safe(fetch_fn: Callable[[str], list[dict]], code: str) -> list[dict]:
+    try:
+        return fetch_fn(code)
+    except Exception:
+        logger.warning("研报元数据 %s 抓取失败，跳过", code, exc_info=True)
+        return []
+
+
+def refresh_research_metadata(
+    fetch_fn: Callable[[str], list[dict]],
+    codes: list[str],
+    group: Optional[RefreshGroup] = None,
+    max_workers: int = RESEARCH_META_WORKERS,
+) -> None:
+    """按传入的股票代码逐个抓取研报元数据（akshare 按 symbol 查询，无全市场接口）。
+
+    每只股票的抓取是独立的网络请求（I/O 等待为主），用线程池并发抓取；
+    数据库写入仍在主线程串行执行，避免 SQLAlchemy session 跨线程使用。
+    """
     step = group.steps[3] if group is not None else None
     if step is not None:
-        step.total = len(rows)
+        step.total = len(codes)
+        step.done = 0
+        step.progress = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with SessionLocal() as s:
-        for i, row in enumerate(tqdm(rows, desc="研报元数据"), 1):
-            obj = s.query(ResearchReport).filter_by(report_id=row["report_id"]).one_or_none()
-            if obj is None:
-                obj = ResearchReport(report_id=row["report_id"], code=row["code"], title=row["title"], published_at=row["published_at"], stage="metadata")
-                s.add(obj)
-            obj.code = row["code"]
-            obj.name = row.get("name")
-            obj.title = row["title"]
-            obj.org = row.get("org")
-            obj.published_at = row["published_at"]
-            obj.summary = row.get("summary")
-            obj.pdf_url = row.get("pdf_url")
-            obj.updated_at = now
-            if step is not None:
-                step.done = i
+    with SessionLocal() as s, ThreadPoolExecutor(max_workers=max_workers) as pool, tqdm(total=len(codes), desc="研报元数据") as bar:
+        for batch_start in range(0, len(codes), max_workers):
+            batch = codes[batch_start:batch_start + max_workers]
+            for code, rows in zip(batch, pool.map(lambda c: _fetch_research_metadata_safe(fetch_fn, c), batch)):
+                for row in rows:
+                    obj = s.query(ResearchReport).filter_by(report_id=row["report_id"]).one_or_none()
+                    if obj is None:
+                        obj = ResearchReport(report_id=row["report_id"], code=row["code"], title=row["title"], published_at=row["published_at"], stage="metadata")
+                        s.add(obj)
+                        s.flush()
+                    obj.code = row["code"]
+                    obj.name = row.get("name")
+                    obj.title = row["title"]
+                    obj.org = row.get("org")
+                    obj.published_at = row["published_at"]
+                    obj.summary = row.get("summary")
+                    obj.pdf_url = row.get("pdf_url")
+                    obj.updated_at = now
+                if step is not None:
+                    step.done += 1
+                    step.progress = int(step.done / step.total * 100) if step.total else 100
+                bar.update(1)
         s.commit()
     if step is not None:
-        step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
+        step.progress = 100
         step.elapsed = "00:00"
 
 
+def _download_and_parse(
+    row: ResearchReport,
+    download_fn: Callable[[str, Path], str],
+    parse_fn: Callable[[str], str],
+    directory: Path,
+) -> Optional[tuple[str, str]]:
+    if not row.pdf_url:
+        return None
+    pdf_path = download_fn(row.pdf_url, directory)
+    return pdf_path, parse_fn(pdf_path)
+
+
 def refresh_research_pdfs(
-    candidate_codes: list[str],
     directory: Path,
     download_fn: Callable[[str, Path], str],
     parse_fn: Callable[[str], str],
     group: Optional[RefreshGroup] = None,
+    max_workers: int = RESEARCH_PDF_WORKERS,
 ) -> None:
+    """下载并解析研报 PDF。
+
+    每份研报的下载是独立的网络请求（I/O 等待为主），用线程池并发下载+解析；
+    数据库写入仍在主线程串行执行，避免 SQLAlchemy session 跨线程使用。
+    """
     step = group.steps[4] if group is not None else None
+    cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
     with SessionLocal() as s:
         rows = (
             s.query(ResearchReport)
-            .filter(ResearchReport.code.in_(candidate_codes), ResearchReport.stage != "parsed")
+            .filter(
+                ResearchReport.stage != "parsed",
+                ResearchReport.published_at >= cutoff,
+            )
             .all()
         )
         if step is not None:
             step.total = len(rows)
-        for i, row in enumerate(tqdm(rows, desc="研报PDF解析"), 1):
-            if not row.pdf_url:
-                continue
-            pdf_path = download_fn(row.pdf_url, directory)
-            row.pdf_path = pdf_path
-            row.content_text = parse_fn(pdf_path)
-            row.stage = "parsed"
-            row.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if step is not None:
-                step.done = i
+            step.done = 0
+            step.progress = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as pool, tqdm(total=len(rows), desc="研报PDF解析") as bar:
+            for batch_start in range(0, len(rows), max_workers):
+                batch = rows[batch_start:batch_start + max_workers]
+                results = pool.map(lambda row: _download_and_parse(row, download_fn, parse_fn, directory), batch)
+                for i, (row, result) in enumerate(zip(batch, results), batch_start + 1):
+                    if result is not None:
+                        pdf_path, text = result
+                        row.pdf_path = pdf_path
+                        row.content_text = text
+                        row.stage = "parsed"
+                        row.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    if step is not None:
+                        step.done = i
+                        step.progress = int(i / step.total * 100) if step.total else 100
+                    bar.update(1)
         s.commit()
     if step is not None:
-        step.progress = 100 if step.total or step.done == 0 else int(step.done / step.total * 100)
+        step.progress = 100
         step.elapsed = "00:00"
 
 
@@ -607,35 +695,37 @@ def get_status_snapshot() -> dict:
 
             f_steps = result["fundamental"]["steps"]
 
-            if report_count > 0:
+            # 正在运行的步骤由后台任务实时维护 done/total/progress，
+            # 此处的数据库回填仅用于兜底（idle/done/error 状态），不应覆盖实时进度。
+            if report_count > 0 and f_steps[0]["status"] != "running":
                 f_steps[0]["total"] = max(f_steps[0]["total"], report_count)
                 f_steps[0]["done"] = report_count
                 f_steps[0]["progress"] = 100
                 if f_steps[0]["status"] == "idle":
                     f_steps[0]["status"] = "done"
 
-            if forecast_count > 0:
+            if forecast_count > 0 and f_steps[1]["status"] != "running":
                 f_steps[1]["total"] = max(f_steps[1]["total"], forecast_count)
                 f_steps[1]["done"] = forecast_count
                 f_steps[1]["progress"] = 100
                 if f_steps[1]["status"] == "idle":
                     f_steps[1]["status"] = "done"
 
-            if industry_count > 0:
+            if industry_count > 0 and f_steps[2]["status"] != "running":
                 f_steps[2]["total"] = max(f_steps[2]["total"], industry_count)
                 f_steps[2]["done"] = industry_count
                 f_steps[2]["progress"] = 100
                 if f_steps[2]["status"] == "idle":
                     f_steps[2]["status"] = "done"
 
-            if research_meta_count > 0:
+            if research_meta_count > 0 and f_steps[3]["status"] != "running":
                 f_steps[3]["total"] = max(f_steps[3]["total"], research_meta_count)
                 f_steps[3]["done"] = research_meta_count
                 f_steps[3]["progress"] = 100
                 if f_steps[3]["status"] == "idle":
                     f_steps[3]["status"] = "done"
 
-            if research_parsed_count > 0:
+            if research_parsed_count > 0 and f_steps[4]["status"] != "running":
                 f_steps[4]["total"] = max(f_steps[4]["total"], research_parsed_count)
                 f_steps[4]["done"] = research_parsed_count
                 f_steps[4]["progress"] = 100

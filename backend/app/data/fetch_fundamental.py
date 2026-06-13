@@ -97,22 +97,23 @@ def fetch_express_reports(report_date: str) -> list[dict]:
     return rows
 
 
+def get_sw_industries_first() -> list[dict]:
+    """一级行业列表。"""
+    df = ak.sw_index_first_info()
+    return [{"code": str(r["行业代码"]).removesuffix(".SI"), "name": str(r["行业名称"])} for _, r in df.iterrows()]
+
+
 def get_sw_industries() -> list[dict]:
+    """二级行业列表（含 parent_name）。"""
     df = ak.sw_index_second_info()
-    # 接口返回的行业代码带 .SI 后缀，但 index_hist_sw / index_component_sw 都不认这个后缀
     return [
         {
             "code": str(r["行业代码"]).removesuffix(".SI"),
             "name": str(r["行业名称"]),
-            "parent_name": str(r["上级行业"]) if pd.notna(r.get("上级行业")) else None,
+            "parent_name": str(r["上级行业"]),
         }
         for _, r in df.iterrows()
     ]
-
-
-def get_sw_industries_first() -> list[dict]:
-    df = ak.sw_index_first_info()
-    return [{"code": str(r["行业代码"]), "name": str(r["行业名称"])} for _, r in df.iterrows()]
 
 
 def get_industry_index_hist(code: str) -> pd.DataFrame:

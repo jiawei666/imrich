@@ -44,26 +44,52 @@ def init_db() -> None:
 
 
 def _migrate_forecasts_constraint(engine):
-    """将 forecasts 表唯一约束从 (code,report_date,source) 迁移到 (code,report_date,source,indicator)。"""
+    """将 forecasts 表唯一约束从 (code,report_date,source) 迁移到 (code,report_date,source,indicator)。
+
+    旧约束由 SQLAlchemy 的 UniqueConstraint(name="uq_forecast") 生成，在 SQLite 中
+    是 CREATE TABLE 内的表级约束，对应索引是自动生成的 sqlite_autoindex_*，并不存在
+    名为 uq_forecast 的索引，只能通过表的 CREATE 语句文本判断；且 SQLite 不支持
+    ALTER TABLE 修改/删除约束，需要重建表。"""
     from sqlalchemy import text
     with engine.connect() as conn:
         result = conn.execute(text(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='forecasts'"
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='forecasts'"
         ))
-        if result.fetchone() is None:
+        row = result.fetchone()
+        if row is None or row[0] is None or "uq_forecast_indicator" in row[0]:
             return
 
-        result = conn.execute(text(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_forecast' AND tbl_name='forecasts'"
+        conn.execute(text("ALTER TABLE forecasts RENAME TO forecasts_old"))
+        # ALTER TABLE RENAME 不会重命名已有索引，需先释放旧索引名再建新表上的同名索引
+        conn.execute(text("DROP INDEX IF EXISTS ix_forecasts_code"))
+        conn.execute(text("DROP INDEX IF EXISTS ix_forecasts_code_date"))
+        conn.execute(text(
+            "CREATE TABLE forecasts ("
+            "id INTEGER NOT NULL, "
+            "code VARCHAR NOT NULL, "
+            "report_date VARCHAR NOT NULL, "
+            "source VARCHAR NOT NULL, "
+            "indicator VARCHAR, "
+            "change_desc VARCHAR, "
+            "change_pct FLOAT, "
+            "forecast_value FLOAT, "
+            "prior_value FLOAT, "
+            "net_profit FLOAT, "
+            "net_profit_yoy FLOAT, "
+            "revenue FLOAT, "
+            "revenue_yoy FLOAT, "
+            "notice_date VARCHAR, "
+            "updated_at VARCHAR, "
+            "PRIMARY KEY (id), "
+            "CONSTRAINT uq_forecast_indicator UNIQUE (code, report_date, source, indicator)"
+            ")"
         ))
-        if result.fetchone() is not None:
-            conn.execute(text(
-                "DELETE FROM forecasts WHERE id NOT IN ("
-                "  SELECT MIN(id) FROM forecasts GROUP BY code, report_date, source, indicator"
-                ")"
-            ))
-            conn.execute(text("DROP INDEX uq_forecast"))
-            conn.execute(text(
-                "CREATE UNIQUE INDEX uq_forecast_indicator ON forecasts (code, report_date, source, indicator)"
-            ))
-            conn.commit()
+        conn.execute(text("CREATE INDEX ix_forecasts_code ON forecasts (code)"))
+        conn.execute(text("CREATE INDEX ix_forecasts_code_date ON forecasts (code, report_date)"))
+        conn.execute(text(
+            "INSERT INTO forecasts SELECT id, code, report_date, source, indicator, "
+            "change_desc, change_pct, forecast_value, prior_value, net_profit, "
+            "net_profit_yoy, revenue, revenue_yoy, notice_date, updated_at FROM forecasts_old"
+        ))
+        conn.execute(text("DROP TABLE forecasts_old"))
+        conn.commit()

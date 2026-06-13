@@ -105,25 +105,65 @@ def fetch_sina_spot(progress_callback: Optional[Callable[[int, int], None]] = No
 
 # ---- 代码标准化 ---- #
 
+def _infer_market(code: str) -> str | None:
+    """根据 6 位纯数字代码推断市场（sh/sz/bj），无法识别返回 None。
+
+    号段规则参考深交所/上交所/北交所编码规则：
+    - 深市 A 股：000/001/002/003/004
+    - 深市 B 股：200/201
+    - 创业板：300/301/302
+    - 沪市 A 股：600/601/603/604/605
+    - 科创板：688/689
+    - 沪市 B 股：900
+    - 老三板（代办转让）：400/420（归 bj 以便 pool_filters 统一过滤）
+    - 北交所：430/480/830-839/870-879/920
+    """
+    # 深市 A 股
+    if code.startswith(("000", "001", "002", "003", "004")):
+        return "sz"
+    # 深市 B 股
+    if code.startswith(("200", "201")):
+        return "sz"
+    # 创业板
+    if code.startswith(("300", "301", "302")):
+        return "sz"
+    # 沪市 A 股
+    if code.startswith(("600", "601", "603", "604", "605")):
+        return "sh"
+    # 科创板
+    if code.startswith(("688", "689")):
+        return "sh"
+    # 沪市 B 股
+    if code.startswith("900"):
+        return "sh"
+    # 老三板（退市整理/代办转让，归 bj 以便 pool_filters 统一过滤）
+    if code.startswith(("400", "420")):
+        return "bj"
+    # 北交所
+    if code.startswith(("430", "480")):
+        return "bj"
+    if code.startswith("920"):
+        return "bj"
+    # 830-839, 870-879: 北交所/新三板
+    if len(code) >= 3 and code[:2] in ("83", "87") and code[2].isdigit():
+        return "bj"
+    return None
+
+
 def normalize_stock_code_for_sina(code: str) -> str:
-    """为腾讯/新浪接口添加市场前缀（sh/sz/bj）。"""
+    """为腾讯/新浪接口添加市场前缀（sh/sz/bj）。
+
+    对于 B 股（200/900）也会正确映射到对应市场；
+    老三板（400/420）归入 bj 以便 pool_filters 统一过滤。
+    """
     if code.startswith(("sh", "sz", "bj")):
         return code
     code = code.zfill(6)
-    if code.startswith(("600", "601", "603", "605")):
-        return f"sh{code}"
-    if code.startswith(("000", "001", "002", "003")):
-        return f"sz{code}"
-    if code.startswith(("300", "301")):
-        return f"sz{code}"
-    if code.startswith("688"):
-        return f"sh{code}"
-    if code.startswith(("430", "830", "831", "832", "833", "834", "835", "836",
-                        "837", "838", "839", "870", "871", "872", "873", "874",
-                        "875", "876", "877", "878", "879", "9")):
+    market = _infer_market(code)
+    if market is None:
+        logger.warning("无法确定股票 %s 的市场，默认当作北京市场", code)
         return f"bj{code}"
-    logger.warning("无法确定股票 %s 的市场，默认当作北京市场", code)
-    return f"bj{code}"
+    return f"{market}{code}"
 
 
 # ---- 腾讯接口：日K线 ---- #

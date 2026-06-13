@@ -62,6 +62,7 @@ export function StrategySidebar({
   onFilterClick?: () => void
 }) {
   const isTechnical = strategy === 'trend-support' || strategy === 'b2'
+  const isFundamental = strategy === 'super-growth' || strategy === 'oversold-bluechip'
 
   return (
     <aside className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper/40 px-3 py-5">
@@ -69,7 +70,14 @@ export function StrategySidebar({
         策略选择
       </div>
       {FUNDAMENTAL.map((s) => (
-        <Item key={s.id} {...s} active={strategy === s.id} onSelect={onSelect} />
+        <Item
+          key={s.id}
+          {...s}
+          active={strategy === s.id}
+          onSelect={onSelect}
+          showFilter={isFundamental}
+          onFilterClick={onFilterClick}
+        />
       ))}
 
       <div className="my-2 border-t border-line-soft" />
