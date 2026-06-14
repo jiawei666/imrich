@@ -51,7 +51,7 @@ def test_run_fundamental_refresh_marks_done(db_path):
                 "notice_date": "2025-04-12",
             }
         ],
-        industries_fn=lambda: [{"code": "850111", "name": "银行"}],
+        industries_fn=lambda: [{"code": "850111", "name": "银行", "parent_name": "金融"}],
         industry_hist_fn=lambda code: pd.DataFrame(
             [{"date": "2025-01-02", "open": 100.0, "close": 101.0, "high": 102.0, "low": 99.0, "volume": 1000.0}]
         ),
@@ -72,6 +72,7 @@ def test_run_fundamental_refresh_marks_done(db_path):
         stock = s.get(Stock, "sz000001")
         assert stock is not None
         assert stock.industry == "银行"
+        assert stock.parent_industry == "金融"
 
 
 def test_run_fundamental_refresh_marks_error_on_exception(db_path):
@@ -114,9 +115,9 @@ def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
     refresh._refresh_industry_index(
         group,
         industries_fn=lambda: [
-            {"code": "850111", "name": "银行"},
-            {"code": "850222", "name": "白色家电"},
-            {"code": "850333", "name": "汽车"},
+            {"code": "850111", "name": "银行", "parent_name": "金融"},
+            {"code": "850222", "name": "白色家电", "parent_name": "可选消费"},
+            {"code": "850333", "name": "汽车", "parent_name": "汽车"},
         ],
         industry_hist_fn=industry_hist_fn,
         constituents_fn=lambda code: constituents[code],
@@ -128,7 +129,9 @@ def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
         assert s.query(IndustryIndex).filter_by(code="850222").count() == 0
         assert s.query(IndustryIndex).filter_by(code="850333").count() == 1
         assert s.get(Stock, "sz000001").industry == "银行"
+        assert s.get(Stock, "sz000001").parent_industry == "金融"
         assert s.get(Stock, "sz000003").industry == "汽车"
+        assert s.get(Stock, "sz000003").parent_industry == "汽车"
         stock2 = s.get(Stock, "sz000002")
         assert stock2 is None or not stock2.industry
 
@@ -150,7 +153,7 @@ def test_refresh_industry_index_writes_industry_dimension_table(db_path):
         industry_hist_fn=lambda code: pd.DataFrame(
             [{"date": "2025-01-02", "open": 1.0, "close": 1.0, "high": 1.0, "low": 1.0, "volume": 1.0}]
         ),
-        constituents_fn=lambda code: [],
+        constituents_fn=lambda code: ["sz000001"] if code == "850111" else [],
         industries_first_fn=lambda: [{"code": "47", "name": "金融"}],
     )
 
@@ -166,6 +169,10 @@ def test_refresh_industry_index_writes_industry_dimension_table(db_path):
         assert second.name == "银行"
         assert second.level == 2
         assert second.parent_name == "金融"
+
+        stock = s.get(Stock, "sz000001")
+        assert stock is not None
+        assert stock.parent_industry == "金融"
 
 
 def test_refresh_industry_index_handles_first_level_fetch_error(db_path):

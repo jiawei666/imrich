@@ -396,6 +396,7 @@ def _refresh_industry_index(
                     stock = Stock(code=code, name="", is_st=False, is_bj=code.startswith("bj"))
                     s.add(stock)
                 stock.industry = industry["name"]
+                stock.parent_industry = industry.get("parent_name")
             s.commit()
         step.done = i
         step.progress = int(i / step.total * 90) if step.total else 90  # 行业占90%，指数占10%
