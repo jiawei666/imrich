@@ -55,6 +55,7 @@ export interface ResearchReport {
   title: string
   org: string
   date: string
+  pdfUrl?: string | null
 }
 
 export interface RiskItem {
@@ -245,4 +246,5 @@ export interface FundamentalScreenResultResponse {
 export interface IndexInfo {
   indexCode: string
   indexName: string
+  stockCodes: string[]
 }

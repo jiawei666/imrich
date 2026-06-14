@@ -6,7 +6,7 @@ import pandas as pd
 
 from app import refresh
 from app.db import SessionLocal, init_db
-from app.models import FinancialReport, Forecast, IndustryIndex, ResearchReport, Stock
+from app.models import FinancialReport, Forecast, Industry, IndexConstituent, IndustryIndex, ResearchReport, Stock
 
 
 def test_run_fundamental_refresh_marks_done(db_path):
@@ -55,6 +55,8 @@ def test_run_fundamental_refresh_marks_done(db_path):
             [{"date": "2025-01-02", "open": 100.0, "close": 101.0, "high": 102.0, "low": 99.0, "volume": 1000.0}]
         ),
         constituents_fn=lambda code: ["sz000001"],
+        industries_first_fn=lambda: [],
+        index_constituents_fn=lambda code: [],
     )
 
     group = refresh.STATE["fundamental"]
@@ -88,6 +90,8 @@ def test_run_fundamental_refresh_marks_error_on_exception(db_path):
             industries_fn=lambda: [],
             industry_hist_fn=lambda code: pd.DataFrame(),
             constituents_fn=lambda code: [],
+            industries_first_fn=lambda: [],
+            index_constituents_fn=lambda code: [],
         )
     assert refresh.STATE["fundamental"].status == "error"
 
@@ -115,6 +119,7 @@ def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
         ],
         industry_hist_fn=industry_hist_fn,
         constituents_fn=lambda code: constituents[code],
+        industries_first_fn=lambda: [],
     )
 
     with SessionLocal() as s:
@@ -128,6 +133,61 @@ def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
 
     assert group.steps[2].done == 3
     assert group.steps[2].progress == 100
+
+
+def test_refresh_industry_index_writes_industry_dimension_table(db_path):
+    init_db()
+    refresh.reset_state()
+    group = refresh.STATE["fundamental"]
+
+    refresh._refresh_industry_index(
+        group,
+        industries_fn=lambda: [
+            {"code": "850111", "name": "银行", "parent_name": "金融"},
+        ],
+        industry_hist_fn=lambda code: pd.DataFrame(
+            [{"date": "2025-01-02", "open": 1.0, "close": 1.0, "high": 1.0, "low": 1.0, "volume": 1.0}]
+        ),
+        constituents_fn=lambda code: [],
+        industries_first_fn=lambda: [{"code": "47", "name": "金融"}],
+    )
+
+    with SessionLocal() as s:
+        first = s.get(Industry, "47")
+        assert first is not None
+        assert first.name == "金融"
+        assert first.level == 1
+        assert first.parent_name is None
+
+        second = s.get(Industry, "850111")
+        assert second is not None
+        assert second.name == "银行"
+        assert second.level == 2
+        assert second.parent_name == "金融"
+
+
+def test_refresh_industry_index_handles_first_level_fetch_error(db_path):
+    """一级行业抓取失败时记录警告但不影响二级行业写入与后续流程。"""
+    init_db()
+    refresh.reset_state()
+    group = refresh.STATE["fundamental"]
+
+    def boom():
+        raise RuntimeError("network down")
+
+    refresh._refresh_industry_index(
+        group,
+        industries_fn=lambda: [{"code": "850111", "name": "银行"}],
+        industry_hist_fn=lambda code: pd.DataFrame(
+            [{"date": "2025-01-02", "open": 1.0, "close": 1.0, "high": 1.0, "low": 1.0, "volume": 1.0}]
+        ),
+        constituents_fn=lambda code: [],
+        industries_first_fn=boom,
+    )
+
+    with SessionLocal() as s:
+        assert s.query(Industry).filter_by(level=1).count() == 0
+        assert s.get(Industry, "850111") is not None
 
 
 def test_refresh_industry_index_updates_progress_incrementally(db_path):
@@ -151,6 +211,7 @@ def test_refresh_industry_index_updates_progress_incrementally(db_path):
         industries_fn=lambda: [{"code": f"8501{i}", "name": f"行业{i}"} for i in range(4)],
         industry_hist_fn=industry_hist_fn,
         constituents_fn=lambda code: [],
+        industries_first_fn=lambda: [],
     )
 
     assert progress_snapshots == [0, 25, 50, 75]
@@ -504,6 +565,8 @@ def test_run_fundamental_refresh_can_include_research_steps(db_path, tmp_path):
         industries_fn=lambda: [],
         industry_hist_fn=lambda code: pd.DataFrame(),
         constituents_fn=lambda code: [],
+        industries_first_fn=lambda: [],
+        index_constituents_fn=lambda code: [],
         research_meta_fn=lambda code: [
             {
                 "report_id": "R1",
@@ -524,3 +587,64 @@ def test_run_fundamental_refresh_can_include_research_steps(db_path, tmp_path):
     group = refresh.STATE["fundamental"]
     assert group.steps[3].progress == 100
     assert group.steps[4].progress == 100
+
+
+def test_refresh_index_constituents_writes_table(db_path):
+    init_db()
+
+    def fake_constituents(index_code):
+        return {"000300": ["sz000001", "sh600519"], "000905": ["sz000002"]}[index_code]
+
+    refresh._refresh_index_constituents(
+        constituents_fn=fake_constituents,
+        index_list=[("000300", "沪深300"), ("000905", "中证500")],
+    )
+
+    with SessionLocal() as s:
+        rows = s.query(IndexConstituent).filter_by(index_code="000300").all()
+        assert {r.stock_code for r in rows} == {"sz000001", "sh600519"}
+        assert all(r.index_name == "沪深300" for r in rows)
+        assert s.query(IndexConstituent).filter_by(index_code="000905").count() == 1
+
+
+def test_refresh_index_constituents_replaces_existing_and_skips_failed(db_path):
+    init_db()
+    with SessionLocal() as s:
+        s.add(IndexConstituent(index_code="000300", stock_code="sz999999", index_name="沪深300"))
+        s.commit()
+
+    def fake_constituents(index_code):
+        if index_code == "000905":
+            raise RuntimeError("network down")
+        return ["sz000001"]
+
+    refresh._refresh_index_constituents(
+        constituents_fn=fake_constituents,
+        index_list=[("000300", "沪深300"), ("000905", "中证500")],
+    )
+
+    with SessionLocal() as s:
+        codes_300 = {r.stock_code for r in s.query(IndexConstituent).filter_by(index_code="000300").all()}
+        assert codes_300 == {"sz000001"}
+        assert s.query(IndexConstituent).filter_by(index_code="000905").count() == 0
+
+
+def test_run_fundamental_refresh_populates_index_constituents(db_path):
+    init_db()
+    refresh.reset_state()
+
+    refresh.run_fundamental_refresh(
+        financial_fn=lambda rd: [],
+        forecast_fn=lambda rd: [],
+        express_fn=lambda rd: [],
+        industries_fn=lambda: [],
+        industry_hist_fn=lambda code: pd.DataFrame(),
+        constituents_fn=lambda code: [],
+        industries_first_fn=lambda: [],
+        index_constituents_fn=lambda code: ["sz000001"],
+    )
+
+    with SessionLocal() as s:
+        rows = s.query(IndexConstituent).all()
+        assert len(rows) > 0
+        assert {r.stock_code for r in rows} == {"sz000001"}

@@ -1,34 +1,30 @@
 import { ArrowLeft, Star, X } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
+import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { Button } from '@/components/ui/button'
-import { StatCards } from './StatCards'
+import { SignalBadgeList } from '@/components/screener/SignalBadge'
 import { ProfitRevenueChart } from './ProfitRevenueChart'
 import { PriceChart } from './PriceChart'
 import { ResearchReports } from './ResearchReports'
 import { RiskChecklist } from './RiskChecklist'
-import type { StockDetail, Candidate, SignalKey } from '@/types'
-
-const SIGNAL_LABELS: Record<SignalKey, string> = {
-  highGrowth: '业绩大增', newHigh: '创新高', beatExpect: '超预期',
-  sectorEffect: '板块效应', industryNewHigh: '行业指数新高', alpha: 'α地位',
-  orderFull: '订单饱满', capexExpand: '产能扩张', newProduct: '新产品',
-  domesticSub: '国产替代', industryRecover: '行业复苏', valuationRepair: '估值修复',
-  oversold: '低位超跌',
-}
+import type { StockDetail, Candidate } from '@/types'
 
 export function StockDetailPanel({
   detail,
   candidate,
   onClose,
+  loading,
 }: {
   detail: StockDetail
   candidate?: Candidate | null
   onClose: () => void
+  loading?: boolean
 }) {
   return (
-    <Card className="flex h-full flex-col overflow-hidden">
+    <Card className="relative flex h-full flex-col overflow-hidden">
+      <LoadingOverlay show={!!loading} />
       {/* header */}
-      <div className="flex items-center gap-3 border-b border-line-soft px-5 py-4">
+      <div className="flex items-center gap-3 border-b border-line-soft px-4 py-3">
         <button
           onClick={onClose}
           className="flex cursor-pointer items-center text-ink-faint transition-colors hover:text-ink"
@@ -57,80 +53,48 @@ export function StockDetailPanel({
       </div>
 
       {/* scroll body */}
-      <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-        <StatCards detail={detail} />
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
 
         {candidate && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="text-xs text-ink-soft">综合得分</div>
-                  <div className="text-2xl font-bold text-accent">{candidate.score.toFixed(1)}</div>
-                </CardContent>
-              </Card>
-              <Card className="col-span-2">
-                <CardContent className="pt-4">
-                  <div className="text-xs text-ink-soft">命中信号</div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {candidate.signals.map(s => (
-                      <span key={s} className="rounded bg-accent/10 px-1.5 py-0.5 text-xs text-accent">
-                        {SIGNAL_LABELS[s] || s}
-                      </span>
-                    ))}
-                    {candidate.extraSignals > 0 && (
-                      <span className="text-xs text-ink-faint">+{candidate.extraSignals}</span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="flex items-center gap-3 rounded-[14px] border border-line-soft bg-paper px-3 py-2">
+            <div className="flex shrink-0 items-baseline gap-1.5 border-r border-line-soft pr-3">
+              <span className="text-xs text-ink-soft">综合得分</span>
+              <span className="text-xl font-bold text-brand">{candidate.score.toFixed(1)}</span>
             </div>
-            {candidate.risks && candidate.risks.length > 0 && (
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="text-xs text-ink-soft mb-2">风险检查</div>
-                  <div className="space-y-1">
-                    {candidate.risks.map((r, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <span className={r.ok ? 'text-green-500' : 'text-red-500'}>{r.ok ? '✓' : '✗'}</span>
-                        <span className={r.ok ? 'text-ink-soft' : 'text-red-500'}>{r.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+              <span className="mr-1 shrink-0 text-xs text-ink-soft">命中信号</span>
+              <SignalBadgeList signals={candidate.signals} extra={candidate.extraSignals} />
+            </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <div className="rounded-[14px] border border-line-soft bg-paper p-4">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <div className="rounded-[14px] border border-line-soft bg-paper p-3">
             <ProfitRevenueChart data={detail.quarters} />
             <p className="tnum mt-1 text-[12px] text-ink-soft">{detail.latestNote}</p>
           </div>
-          <div className="rounded-[14px] border border-line-soft bg-paper p-4">
-            <PriceChart
-              stockName={detail.name}
-              klineDay={detail.klineDay}
-              klineWeek={detail.klineWeek}
-              klineMonth={detail.klineMonth}
-              klineQuarter={detail.klineQuarter}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <div className="rounded-[14px] border border-line-soft bg-paper p-4">
+          <div className="flex flex-col rounded-[14px] border border-line-soft bg-paper p-3">
             <ResearchReports reports={detail.reports} />
           </div>
-          {candidate?.risks && candidate.risks.length > 0 && (
-            <div className="rounded-[14px] border border-line-soft bg-paper p-4">
-              <RiskChecklist risks={candidate.risks} />
-            </div>
-          )}
         </div>
 
-        <p className="border-t border-line-soft pt-4 text-[12px] leading-relaxed text-ink-faint">
+        <div className="rounded-[14px] border border-line-soft bg-paper p-3">
+          <PriceChart
+            stockName={detail.name}
+            klineDay={detail.klineDay}
+            klineWeek={detail.klineWeek}
+            klineMonth={detail.klineMonth}
+            klineQuarter={detail.klineQuarter}
+          />
+        </div>
+
+        {candidate?.risks && candidate.risks.length > 0 && (
+          <div className="rounded-[14px] border border-line-soft bg-paper p-3">
+            <RiskChecklist risks={candidate.risks} />
+          </div>
+        )}
+
+        <p className="border-t border-line-soft pt-3 text-[12px] leading-relaxed text-ink-faint">
           免责声明：本系统基于公开数据与研报分析生成，仅供参考，不构成任何投资建议。
         </p>
       </div>

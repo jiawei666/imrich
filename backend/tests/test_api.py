@@ -88,6 +88,24 @@ def test_meta_endpoint(client):
     assert "stockList" in r.json()
 
 
+def test_indices_endpoint_returns_distinct_indices(client):
+    from app.models import IndexConstituent
+
+    with SessionLocal() as s:
+        s.add(IndexConstituent(index_code="000300", stock_code="sz000001", index_name="沪深300"))
+        s.add(IndexConstituent(index_code="000300", stock_code="sh600519", index_name="沪深300"))
+        s.add(IndexConstituent(index_code="000905", stock_code="sz000002", index_name="中证500"))
+        s.commit()
+
+    r = client.get("/indices")
+    assert r.status_code == 200
+    by_code = {i["indexCode"]: i for i in r.json()}
+    assert by_code["000300"]["indexName"] == "沪深300"
+    assert set(by_code["000300"]["stockCodes"]) == {"sz000001", "sh600519"}
+    assert by_code["000905"]["indexName"] == "中证500"
+    assert by_code["000905"]["stockCodes"] == ["sz000002"]
+
+
 def test_stock_detail_returns_404_for_missing_stock(client):
     r = client.get("/stock/sz999999")
     assert r.status_code == 404

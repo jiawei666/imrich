@@ -15,6 +15,8 @@ from app.db import SessionLocal
 from app.models import (
     FinancialReport,
     Forecast,
+    Industry,
+    IndexConstituent,
     IndustryIndex,
     KlineDay,
     ResearchReport,
@@ -319,9 +321,46 @@ def _refresh_industry_index(
     industries_fn: Callable[[], list],
     industry_hist_fn: Callable[[str], pd.DataFrame],
     constituents_fn: Callable[[str], list],
+    industries_first_fn: Optional[Callable[[], list]] = None,
 ) -> None:
     step = group.steps[2]
+
+    if industries_first_fn is None:
+        from app.data.fetch_fundamental import get_sw_industries_first
+        industries_first_fn = get_sw_industries_first
+
+    # 写入一级行业维度表
+    try:
+        with SessionLocal() as s:
+            for ind in industries_first_fn():
+                obj = s.get(Industry, ind["code"])
+                if obj is None:
+                    obj = Industry(code=ind["code"])
+                    s.add(obj)
+                obj.name = ind["name"]
+                obj.level = 1
+                obj.parent_name = None
+            s.commit()
+    except Exception:
+        logger.warning("一级行业写入失败", exc_info=True)
+
     industries = industries_fn()
+
+    # 写入二级行业维度表
+    try:
+        with SessionLocal() as s:
+            for ind in industries:
+                obj = s.get(Industry, ind["code"])
+                if obj is None:
+                    obj = Industry(code=ind["code"])
+                    s.add(obj)
+                obj.name = ind["name"]
+                obj.level = 2
+                obj.parent_name = ind.get("parent_name")
+            s.commit()
+    except Exception:
+        logger.warning("二级行业写入失败", exc_info=True)
+
     step.total = len(industries)
     step.done = 0
     step.progress = 0
@@ -407,7 +446,7 @@ def run_forecasts_refresh(forecast_fn=None, express_fn=None):
         raise
 
 
-def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents_fn=None):
+def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents_fn=None, industries_first_fn=None):
     """独立执行步骤3：申万行业指数刷新。"""
     if industries_fn is None:
         from app.data.fetch_fundamental import get_sw_industries
@@ -425,12 +464,37 @@ def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents
     step.status = "running"
     step.error = None
     try:
-        _refresh_industry_index(group, industries_fn, industry_hist_fn, constituents_fn)
+        _refresh_industry_index(group, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn)
         step.status = "done"
     except Exception as e:
         step.status = "error"
         step.error = str(e)
         raise
+
+
+def _refresh_index_constituents(
+    constituents_fn: Optional[Callable[[str], list]] = None,
+    index_list: Optional[list[tuple[str, str]]] = None,
+) -> None:
+    """刷新宽基指数成分股（中证系），供 /indices 接口使用。"""
+    if constituents_fn is None:
+        from app.data.fetch_fundamental import get_index_constituents
+        constituents_fn = get_index_constituents
+    if index_list is None:
+        from app.data.fetch_fundamental import CS_INDEX_LIST
+        index_list = CS_INDEX_LIST
+
+    for index_code, index_name in index_list:
+        try:
+            codes = constituents_fn(index_code)
+        except Exception:
+            logger.warning("宽基指数 %s 成分股抓取失败", index_code, exc_info=True)
+            continue
+        with SessionLocal() as s:
+            s.query(IndexConstituent).filter_by(index_code=index_code).delete()
+            for code in codes:
+                s.add(IndexConstituent(index_code=index_code, stock_code=code, index_name=index_name))
+            s.commit()
 
 
 def _all_stock_codes() -> list[str]:
@@ -496,6 +560,7 @@ def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None,
 def run_fundamental_refresh(
     financial_fn=None, forecast_fn=None, express_fn=None,
     industries_fn=None, industry_hist_fn=None, constituents_fn=None,
+    industries_first_fn=None, index_constituents_fn=None,
     research_meta_fn=None,
     research_download_fn=None, research_parse_fn=None,
     research_directory=None,
@@ -513,7 +578,8 @@ def run_fundamental_refresh(
             futs = {
                 pool.submit(run_financial_refresh, financial_fn): 0,
                 pool.submit(run_forecasts_refresh, forecast_fn, express_fn): 1,
-                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn): 2,
+                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn): 2,
+                pool.submit(_refresh_index_constituents, index_constituents_fn): 3,
             }
             errors = []
             for fut in as_completed(futs):

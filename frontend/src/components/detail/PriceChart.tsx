@@ -36,6 +36,12 @@ function createTooltipFormatter(data: Kline[]) {
     const closePrice = point != null ? String(point.close) : ''
     const fields: string[] = []
 
+    // 涨跌幅 — 使用前一日收盘价计算
+    const pctChg = point != null && dataIndex > 0 && data[dataIndex - 1]
+      ? ((point.close - data[dataIndex - 1].close) / data[dataIndex - 1].close * 100)
+      : null
+    const pctColor = pctChg != null ? (pctChg >= 0 ? UP : DOWN) : ''
+
     if (kline && Array.isArray(kline.data)) {
       fields.push(`<span style="color:#8b96a1">开盘:</span> ${kline.data[0]}`)
       fields.push(`<span style="color:#8b96a1">最低:</span> ${kline.data[2]}`)
@@ -68,8 +74,9 @@ function createTooltipFormatter(data: Kline[]) {
 
     return `<div style="position:relative;min-width:140px">
       <div style="font-weight:600;margin-bottom:4px">${date}
-        <span style="float:right;font-size:16px;font-weight:700;color:${closeColor}">${closePrice}</span>
+        ${pctChg != null ? `<span style="float:right;font-size:14px;font-weight:700;color:${pctColor}">${pctChg >= 0 ? '+' : ''}${pctChg.toFixed(2)}%</span>` : ''}
       </div>
+      <div style="margin-bottom:4px"><span style="font-size:16px;font-weight:700;color:${closeColor}">${closePrice}</span></div>
       ${fields.join('<br/>')}
       ${jHtml}
     </div>`
@@ -362,9 +369,9 @@ function ChartBody({
 
   // 图表高度
   const chartHeight = () => {
-    if (hasKdj && hasVolume) return 440
-    if (hasVolume || hasKdj) return 360
-    return 260
+    if (hasKdj && hasVolume) return 380
+    if (hasVolume || hasKdj) return 310
+    return 240
   }
 
   // option 仅在 data/period/asLine 变化时重建，避免标记更新（setMarkers）

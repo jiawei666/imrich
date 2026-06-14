@@ -23,6 +23,7 @@ function Item({
   showFilter?: boolean
   onFilterClick?: () => void
 }) {
+  const filterVisible = !!showFilter && active
   return (
     <div className="flex items-center gap-0.5">
       <button
@@ -36,20 +37,21 @@ function Item({
         )}
       >
         <span>{label}</span>
-        {active && !showFilter && <span className="size-1.5 rounded-full bg-brand" />}
       </button>
-      {showFilter && active && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onFilterClick?.() }}
-          className={cn(
-            'rounded-md p-1.5 transition-colors',
-            'text-ink-faint hover:bg-paper-2 hover:text-ink-soft',
-          )}
-          title="筛选参数"
-        >
-          <SlidersHorizontal className="size-3.5" />
-        </button>
-      )}
+      <button
+        onClick={(e) => { e.stopPropagation(); onFilterClick?.() }}
+        data-filter-toggle
+        tabIndex={filterVisible ? 0 : -1}
+        aria-hidden={!filterVisible}
+        className={cn(
+          'rounded-md p-1.5 transition-opacity duration-150',
+          'text-ink-faint hover:bg-paper-2 hover:text-ink-soft',
+          filterVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+        title="筛选参数"
+      >
+        <SlidersHorizontal className="size-3.5" />
+      </button>
     </div>
   )
 }

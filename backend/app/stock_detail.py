@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pandas as pd
+
 from app.db import SessionLocal
-from app.models import FinancialReport, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
+from app.indicators import compute_kdj, compute_zhixing_short_trend, compute_zhixing_bull_bear
+from app.models import FinancialReport, Industry, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
 from app.signals import compute_single_quarter_series
 from fastapi import HTTPException
 
@@ -32,11 +35,44 @@ def _load_klines(code: str) -> dict:
             .order_by(KlineQuarter.date)
             .all()
         )
+
+    def _serialize(rows):
+        """序列化 K 线行，并附加 KDJ / 黄白线指标。"""
+        if not rows:
+            return []
+        df = pd.DataFrame(
+            [(r.date, r.open, r.close, r.high, r.low, r.volume) for r in rows],
+            columns=["date", "open", "close", "high", "low", "volume"],
+        )
+        kdj = compute_kdj(df)
+        white = compute_zhixing_short_trend(df, span=10)
+        yellow = compute_zhixing_bull_bear(df)
+
+        def _round(x):
+            return None if pd.isna(x) else round(float(x), 3)
+
+        result = []
+        for i in range(len(df)):
+            result.append({
+                "date": df["date"].iloc[i],
+                "open": round(float(df["open"].iloc[i]), 2),
+                "close": round(float(df["close"].iloc[i]), 2),
+                "high": round(float(df["high"].iloc[i]), 2),
+                "low": round(float(df["low"].iloc[i]), 2),
+                "volume": round(float(df["volume"].iloc[i]), 2) if pd.notna(df["volume"].iloc[i]) else None,
+                "k": _round(kdj["K"].iloc[i]),
+                "d": _round(kdj["D"].iloc[i]),
+                "j": _round(kdj["J"].iloc[i]),
+                "whiteLine": _round(white.iloc[i]),
+                "yellowLine": _round(yellow.iloc[i]),
+            })
+        return result
+
     return {
-        "day": [{"date": r.date, "open": r.open, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume} for r in day],
-        "week": [{"date": r.date, "open": r.open, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume} for r in week],
-        "month": [{"date": r.date, "open": r.open, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume} for r in month],
-        "quarter": [{"date": r.date, "open": r.open, "close": r.close, "high": r.high, "low": r.low, "volume": r.volume} for r in quarter],
+        "day": _serialize(day),
+        "week": _serialize(week),
+        "month": _serialize(month),
+        "quarter": _serialize(quarter),
     }
 
 
@@ -59,6 +95,16 @@ def get_stock_detail(code: str):
             report_dates, [row.revenue for row in financials]
         )
 
+        parent_industry_name = None
+        if stock.industry:
+            industry_row = (
+                s.query(Industry)
+                .filter_by(level=2, name=stock.industry)
+                .first()
+            )
+            if industry_row is not None:
+                parent_industry_name = industry_row.parent_name
+
     def _quarter(report_date: str) -> str:
         y = report_date[:4]
         m = report_date[5:7]
@@ -70,7 +116,7 @@ def get_stock_detail(code: str):
     return {
         "code": stock.code,
         "name": stock.name or stock.code,
-        "industry": stock.industry or "",
+        "industry": parent_industry_name or stock.industry or "",
         "subIndustry": stock.industry or "",
         "price": klines["day"][-1]["close"] if klines["day"] else 10,
         "yearHigh": high_line,
@@ -96,9 +142,9 @@ def get_stock_detail(code: str):
         "klineQuarter": klines["quarter"],
         "highLine": high_line,
         "reports": [
-            {"title": r.title, "org": r.org, "date": r.published_at}
+            {"title": r.title, "org": r.org, "date": r.published_at, "pdfUrl": r.pdf_url}
             for r in s.query(ResearchReport)
-            .filter_by(code=code, stage="parsed")
+            .filter_by(code=code)
             .order_by(ResearchReport.published_at.desc())
             .limit(10)
             .all()

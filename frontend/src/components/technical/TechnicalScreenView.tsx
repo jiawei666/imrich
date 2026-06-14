@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
-import { X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { LoadingOverlay } from '@/components/ui/loading-overlay'
+import { FilterDrawer } from '@/components/ui/filter-drawer'
 import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
 import { TechnicalFilterCard } from './TechnicalFilterCard'
@@ -26,6 +27,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   const [selectedCode, setSelectedCode] = useState<string>('')
   const [selectedName, setSelectedName] = useState<string>('')
   const [kline, setKline] = useState<Record<KlineTimeframe, Kline[]>>(EMPTY_KLINE)
+  const [klineLoading, setKlineLoading] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [screening, setScreening] = useState(false)
   const screeningRef = useRef(false)
@@ -133,6 +135,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   useEffect(() => {
     if (!selectedCode) return
     let cancelled = false
+    setKlineLoading(true)
     const load = async () => {
       try {
         const periods: KlineTimeframe[] = ['day', 'week', 'month', 'quarter']
@@ -144,6 +147,8 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         })
       } catch {
         if (!cancelled) setKline(EMPTY_KLINE)
+      } finally {
+        if (!cancelled) setKlineLoading(false)
       }
     }
     load()
@@ -228,24 +233,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setSearchQuery('')
   }, [])
 
-  // ---- 抽屉外点击收起 ----
-  const drawerRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!filterOpen) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        setFilterOpen(false)
-      }
-    }
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside)
-    }, 0)
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [filterOpen])
-
   const handleSelectCode = useCallback((code: string, name: string) => {
     setSelectedCode(code)
     setSelectedName(name)
@@ -253,32 +240,15 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
 
   return (
     <div className="relative flex flex-1 overflow-hidden">
-      {/* 筛选抽屉 */}
-      {filterOpen && (
-        <div
-          ref={drawerRef}
-          className="absolute left-0 top-0 z-30 flex h-full w-[180px] flex-col border-r border-line bg-paper/95 px-3 py-5 shadow-lg backdrop-blur-sm"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-medium text-ink-soft">筛选参数</span>
-            <button
-              onClick={() => setFilterOpen(false)}
-              className="rounded-md p-1 text-ink-faint hover:bg-paper-2 hover:text-ink-soft"
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <TechnicalFilterCard
-              preset={preset}
-              paramValues={paramValues}
-              onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
-              onApply={runScreenFn}
-              loading={screening}
-            />
-          </div>
-        </div>
-      )}
+      <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} title={preset?.name ?? '技术面战法'}>
+        <TechnicalFilterCard
+          preset={preset}
+          paramValues={paramValues}
+          onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
+          onApply={runScreenFn}
+          loading={screening}
+        />
+      </FilterDrawer>
 
       {/* 主内容区 */}
       <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
@@ -306,7 +276,8 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
           />
         </div>
         <div className="min-w-0">
-          <Card>
+          <Card className="relative">
+            <LoadingOverlay show={klineLoading} />
             <CardContent className="pt-5">
               <PriceChart
                 stockName={selectedName}

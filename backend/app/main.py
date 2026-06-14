@@ -154,8 +154,12 @@ def list_indices():
     from app.models import IndexConstituent
     from app.db import SessionLocal
     with SessionLocal() as s:
-        rows = s.query(IndexConstituent.index_code, IndexConstituent.index_name).distinct().all()
-    return [{"indexCode": r.index_code, "indexName": r.index_name} for r in rows]
+        rows = s.query(IndexConstituent).all()
+    indices: dict[str, dict] = {}
+    for r in rows:
+        index = indices.setdefault(r.index_code, {"indexCode": r.index_code, "indexName": r.index_name, "stockCodes": []})
+        index["stockCodes"].append(r.stock_code)
+    return list(indices.values())
 
 
 @app.get("/screen")

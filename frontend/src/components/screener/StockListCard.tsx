@@ -2,8 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
 import { ArrowUpDown, ArrowUp, ArrowDown, Loader2, PackageOpen, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+
+const ALL_HISTORY = '__all__'
 import type { StockRow, StockSortField, SortOrder, ScreenSnapshotMeta } from '@/types'
 
 interface ListRow {
@@ -189,7 +193,8 @@ export function StockListCard({
   const subtitle = `共 ${total.toLocaleString()} 只`
 
   return (
-    <Card>
+    <Card className="relative">
+      <LoadingOverlay show={loading && data.length > 0} />
       <CardHeader className="flex-row items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <CardTitle>{title}</CardTitle>
@@ -209,25 +214,28 @@ export function StockListCard({
           </div>
           {/* 历史下拉框 — 有历史数据时始终可见 */}
           {historyList && historyList.length > 0 && (
-            <select
-              value={selectedHistoryDate ?? ''}
-              onChange={(e) => {
-                const v = e.target.value
-                if (v === '') {
+            <Select
+              value={selectedHistoryDate ?? ALL_HISTORY}
+              onValueChange={(v) => {
+                if (v === ALL_HISTORY) {
                   onClearHistory?.()
                 } else {
                   onSelectHistoryDate?.(v)
                 }
               }}
-              className="rounded-lg border border-line-soft bg-paper-2/50 px-2 py-1.5 text-[13px] text-ink focus:border-brand focus:outline-none"
             >
-              <option value="">全部股票</option>
-              {historyList.map((h) => (
-                <option key={h.date} value={h.date}>
-                  {h.date}（{h.count}只）
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 w-auto text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_HISTORY}>全部股票</SelectItem>
+                {historyList.map((h) => (
+                  <SelectItem key={h.date} value={h.date}>
+                    {h.date}（{h.count}只）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       </CardHeader>

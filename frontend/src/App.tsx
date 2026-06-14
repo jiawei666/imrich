@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { X } from 'lucide-react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { StrategySidebar } from '@/components/layout/StrategySidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { FilterPanel, type FilterState } from '@/components/screener/FilterPanel'
 import { FundamentalCandidateListCard } from '@/components/screener/FundamentalCandidateListCard'
 import { StockDetailPanel } from '@/components/detail/StockDetailPanel'
+import { Card } from '@/components/ui/card'
+import { FilterDrawer } from '@/components/ui/filter-drawer'
 import { TechnicalScreenView, type TechnicalScreenViewHandle } from '@/components/technical/TechnicalScreenView'
 import { STOCK_DETAIL } from '@/data/mock'
 import { api } from '@/lib/api'
@@ -23,13 +24,14 @@ import {
 } from '@/types'
 
 export default function App() {
-  const [strategy, setStrategy] = useState<StrategyId>('trend-support')
-  const [selectedCode, setSelectedCode] = useState<string>(STOCK_DETAIL.code)
+  const [strategy, setStrategy] = useState<StrategyId>('super-growth')
+  const [selectedCode, setSelectedCode] = useState<string>('')
   const [presets, setPresets] = useState<Preset[]>([])
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus | undefined>(undefined)
   const [meta, setMeta] = useState<MetaResponse | undefined>(undefined)
   const [stockDetail, setStockDetail] = useState<StockDetail>(STOCK_DETAIL)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [activities, setActivities] = useState<ActivityItem[]>([])
 
   // 基本面专属状态
@@ -44,7 +46,6 @@ export default function App() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
 
   const technicalRef = useRef<TechnicalScreenViewHandle>(null)
-  const drawerRef = useRef<HTMLDivElement>(null)
   const activityTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   // 上报后台任务状态，供 TopBar 实时动态区展示；done/error 状态 3 秒后自动消失
@@ -103,6 +104,8 @@ export default function App() {
   const loadFundamentalCached = useCallback(async (preset: Preset) => {
     const defaults = Object.fromEntries(preset.params.map((p) => [p.key, p.value]))
     setParamValues(defaults)
+    setSelectedCandidate(null)
+    setScreening(true)
     try {
       const res = await api.screenFundamentalResult(preset.id)
       setScreenItems(res.items)
@@ -111,10 +114,15 @@ export default function App() {
       if (res.items[0]) {
         setSelectedCode(res.items[0].code)
         setSelectedCandidate(res.items[0])
+      } else {
+        setSelectedCode('')
       }
     } catch {
       setScreenItems([])
       setScreenTotal(0)
+      setSelectedCode('')
+    } finally {
+      setScreening(false)
     }
   }, [])
 
@@ -122,12 +130,9 @@ export default function App() {
     try {
       const indices = await api.listIndices()
       setIndexList(indices)
-      // 加载指数成分股映射
       const map: Record<string, Set<string>> = {}
       for (const idx of indices) {
-        // 成分股数据从 /indices 接口只返回列表，需要从后端拿成分股映射
-        // 暂时用空集合，后续可单独接口加载
-        map[idx.indexCode] = new Set<string>()
+        map[idx.indexCode] = new Set(idx.stockCodes)
       }
       setIndexConstituentMap(map)
     } catch {
@@ -146,30 +151,18 @@ export default function App() {
 
   useEffect(() => {
     if (isTechnical || !selectedCode) return
+    let cancelled = false
+    setDetailLoading(true)
     api.stockDetail(selectedCode)
       .then((detail) => {
+        if (cancelled) return
         setStockDetail(detail)
         setDetailError(null)
       })
-      .catch(() => setDetailError('详情加载失败'))
+      .catch(() => { if (!cancelled) setDetailError('详情加载失败') })
+      .finally(() => { if (!cancelled) setDetailLoading(false) })
+    return () => { cancelled = true }
   }, [isTechnical, selectedCode])
-
-  // 抽屉外点击关闭
-  useEffect(() => {
-    if (!filterOpen) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        setFilterOpen(false)
-      }
-    }
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside)
-    }, 0)
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [filterOpen])
 
   const triggerRefreshKline = (reloadStockList: boolean) => {
     api.refreshKline(reloadStockList).catch(() => {})
@@ -242,37 +235,20 @@ export default function App() {
           />
         ) : (
           <div className="relative flex flex-1 overflow-hidden">
-            {/* 左侧筛选抽屉 */}
-            {filterOpen && (
-              <div
-                ref={drawerRef}
-                className="absolute left-0 top-0 z-30 flex h-full w-[180px] flex-col border-r border-line bg-paper/95 px-3 py-5 shadow-lg backdrop-blur-sm"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-xs font-medium text-ink-soft">筛选参数</span>
-                  <button
-                    onClick={() => setFilterOpen(false)}
-                    className="rounded-md p-1 text-ink-faint hover:bg-paper-2 hover:text-ink-soft"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  {activePreset && (
-                    <FilterPanel
-                      preset={activePreset}
-                      paramValues={paramValues}
-                      onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
-                      onApply={runScreen}
-                      loading={screening}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
+            <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} title={activePreset?.name ?? '筛选参数'}>
+              {activePreset && (
+                <FilterPanel
+                  preset={activePreset}
+                  paramValues={paramValues}
+                  onParamChange={(k, v) => setParamValues((s) => ({ ...s, [k]: v }))}
+                  onApply={runScreen}
+                  loading={screening}
+                />
+              )}
+            </FilterDrawer>
 
             {/* 主区域：结果列表 + 详情 */}
-            <main className="grid flex-1 grid-cols-1 gap-5 overflow-hidden p-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <main className="grid flex-1 grid-cols-1 gap-5 overflow-hidden p-6 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
               <div className="flex min-h-0 flex-col">
                 <FundamentalCandidateListCard
                   items={screenItems}
@@ -283,15 +259,23 @@ export default function App() {
                   indices={indexList}
                   indexConstituentMap={indexConstituentMap}
                   showDrawdown={strategy === 'oversold-bluechip'}
+                  loading={screening}
                 />
               </div>
               <div className="overflow-y-auto">
-                {detailError && <div className="mb-3 text-sm text-red-600">{detailError}</div>}
-                <StockDetailPanel
-                  detail={stockDetail}
-                  candidate={selectedCandidate}
-                  onClose={() => setSelectedCode('')}
-                />
+                {selectedCode && detailError && <div className="mb-3 text-sm text-red-600">{detailError}</div>}
+                {selectedCode ? (
+                  <StockDetailPanel
+                    detail={stockDetail}
+                    candidate={selectedCandidate}
+                    onClose={() => setSelectedCode('')}
+                    loading={detailLoading}
+                  />
+                ) : (
+                  <Card className="flex h-full items-center justify-center text-sm text-ink-faint">
+                    请选择候选股票查看详情
+                  </Card>
+                )}
               </div>
             </main>
           </div>

@@ -1,6 +1,6 @@
 import pytest
 from app.db import SessionLocal, init_db
-from app.models import FinancialReport, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
+from app.models import FinancialReport, Industry, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
 from app.stock_detail import get_stock_detail
 
 
@@ -32,7 +32,21 @@ def test_get_stock_detail_returns_quarterly_data(db_path):
     # Q2 单季度 = 250M - 100M = 150M → 1.5 亿
     assert detail["quarters"][1]["netProfitQuarterly"] == pytest.approx(1.5)
     assert detail["reports"][0]["title"] == "订单饱满"
+    # industries 表为空时，industry/subIndustry 均 fallback 为 stock.industry
+    assert detail["industry"] == "银行"
+    assert detail["subIndustry"] == "银行"
     # 确保占位字段已移除
     assert "score" not in detail
     assert "signals" not in detail
     assert "risks" not in detail
+
+
+def test_get_stock_detail_industry_uses_parent_name(db_path):
+    init_db()
+    with SessionLocal() as s:
+        s.add(Stock(code="sz000002", name="测试股份", industry="锂电池"))
+        s.add(Industry(code="850111", name="锂电池", level=2, parent_name="电力设备"))
+        s.commit()
+    detail = get_stock_detail("sz000002")
+    assert detail["industry"] == "电力设备"
+    assert detail["subIndustry"] == "锂电池"

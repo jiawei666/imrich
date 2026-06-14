@@ -1,7 +1,20 @@
+import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { Preset } from '@/types'
 
 export type FilterState = Record<string, number | string>
+
+const EMPTY_OPTION = '__all__'
 
 export function FilterPanel({
   preset,
@@ -17,49 +30,62 @@ export function FilterPanel({
   loading: boolean
 }) {
   return (
-    <div className="space-y-5">
-      {preset.params.map((param) => (
-        <div key={param.key} className="space-y-1.5">
-          <label className="text-[11px] font-medium text-ink-soft">{param.label}</label>
-          {param.type === 'select' ? (
-            <select
-              className="w-full rounded-md border border-line bg-paper-2 px-2 py-1 text-xs"
-              value={String(paramValues[param.key] ?? param.value)}
-              onChange={(e) => onParamChange(param.key, e.target.value)}
-            >
-              {(param.options ?? []).map((opt) =>
-                opt.group ? (
-                  <optgroup key={`${opt.group}-${opt.value}`} label={opt.group}>
-                    <option value={opt.value}>{opt.label}</option>
-                  </optgroup>
-                ) : (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                )
+    <div className="flex h-full flex-col">
+      <div className="flex-1 space-y-6">
+        {preset.params.map((param) => (
+          <div key={param.key} className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[13px] font-medium text-ink-soft">{param.label}</label>
+              {param.type !== 'select' && (
+                <span className="tnum text-[13px] font-semibold text-ink">
+                  {paramValues[param.key] ?? param.value}{param.unit ?? ''}
+                </span>
               )}
-            </select>
-          ) : (
-            <>
+            </div>
+            {param.type === 'select' ? (
+              <Select
+                value={String(paramValues[param.key] ?? param.value) || EMPTY_OPTION}
+                onValueChange={(v) => onParamChange(param.key, v === EMPTY_OPTION ? '' : v)}
+              >
+                <SelectTrigger className="h-9 w-full text-[13px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(param.options ?? []).filter((opt) => !opt.group).map((opt) => (
+                    <SelectItem key={opt.value || EMPTY_OPTION} value={opt.value || EMPTY_OPTION}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                  {[...new Set((param.options ?? []).filter((opt) => opt.group).map((opt) => opt.group!))].map((group) => (
+                    <SelectGroup key={group}>
+                      <SelectLabel>{group}</SelectLabel>
+                      {(param.options ?? []).filter((opt) => opt.group === group).map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
               <Slider
-                defaultValue={[Number(paramValues[param.key] ?? param.value)]}
+                value={[Number(paramValues[param.key] ?? param.value)]}
                 min={param.min ?? 0}
                 max={param.max ?? 100}
                 step={param.step ?? 1}
                 onValueChange={([v]: number[]) => onParamChange(param.key, v)}
               />
-              <div className="text-right text-[10px] text-ink-faint">
-                {paramValues[param.key] ?? param.value}{param.unit ?? ''}
-              </div>
-            </>
-          )}
-        </div>
-      ))}
-      <button
-        className="w-full rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-        onClick={onApply}
-        disabled={loading}
-      >
-        {loading ? '筛选中...' : '运行筛选'}
-      </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <Button variant="primary" size="sm" onClick={onApply} disabled={loading} className="mt-6 w-full">
+        {loading ? (
+          <>
+            <Loader2 className="size-3.5 animate-spin" />
+            筛选中...
+          </>
+        ) : '运行筛选'}
+      </Button>
     </div>
   )
 }
