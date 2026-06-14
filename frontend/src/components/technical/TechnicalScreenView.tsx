@@ -238,11 +238,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setSelectedName(name)
   }, [])
 
-  const selectedRow = useMemo(
-    () => stockData.find((s) => s.code === selectedCode),
-    [stockData, selectedCode],
-  )
-
   return (
     <div className="relative flex flex-1 overflow-hidden">
       <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} title={preset?.name ?? '技术面战法'}>
@@ -284,20 +279,19 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         <div className="min-w-0">
           <Card className="relative">
             <LoadingOverlay show={klineLoading} />
-            {selectedCode && (
-              <div className="flex items-baseline gap-2.5 border-b border-line-soft px-5 py-3">
-                <h2 className="text-lg font-bold text-ink">{selectedName}</h2>
-                <span className="tnum text-sm text-ink-faint">{selectedCode}</span>
-                {(selectedRow?.parent_industry || selectedRow?.industry) && (
-                  <span className="ml-1 text-[13px] text-ink-soft">
-                    {selectedRow?.parent_industry ?? '—'} · {selectedRow?.industry ?? '—'}
-                  </span>
-                )}
-              </div>
-            )}
             <CardContent className="pt-5">
               <PriceChart
                 stockName={selectedName}
+                stockCode={selectedCode || undefined}
+                subTitle={
+                  stockData.length > 0
+                    ? (() => {
+                        const row = stockData.find((s) => s.code === selectedCode)
+                        if (!row?.parent_industry && !row?.industry) return undefined
+                        return `${row?.parent_industry ?? '—'} · ${row?.industry ?? '—'}`
+                      })()
+                    : undefined
+                }
                 klineDay={kline.day} klineWeek={kline.week}
                 klineMonth={kline.month} klineQuarter={kline.quarter}
               />
