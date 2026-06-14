@@ -69,3 +69,28 @@ def test_build_rows_bluechip_and_scenario(db_path):
     assert by_code["sh600519"]["oversold_scenario"] == "A"
     assert by_code["sh600519"]["oversold_bluechip"] is True
     assert by_code["sz000002"]["is_bluechip"] is False
+
+
+from app.fundamental_screen import _display_signals, run_fundamental_screen_from_rows
+
+
+def test_display_signals_scenario_a():
+    assert "oversoldBluechipA" in _display_signals({"oversold_scenario": "A"})
+
+
+def test_display_signals_scenario_b():
+    assert "oversoldBluechipB" in _display_signals({"oversold_scenario": "B"})
+
+
+def test_screen_emits_scenario_b_signal():
+    rows = [{
+        "code": "sh600519", "name": "贵州茅台", "industry": "食品饮料",
+        "is_bluechip": True, "oversold_bluechip": True, "oversold_scenario": "B",
+        "risk_price_new_low": False, "risk_industry_down": False,
+        "risk_structural_decline": False,
+        "drawdown_from_high": 0.55, "ttm_yoy": -25,
+        "netProfitYoY": -25, "revenueYoY": -5,
+    }]
+    out = run_fundamental_screen_from_rows("oversold-bluechip", rows, {})
+    assert len(out) == 1
+    assert "oversoldBluechipB" in out[0]["signals"]
