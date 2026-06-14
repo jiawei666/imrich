@@ -9,7 +9,7 @@
 
 1. 蓝筹判定改为「是否在宽基指数成分股内」，删除 3 个冗余参数。
 2. 错杀场景 A/B 在前端可区分（当前看不出区别）。
-3. 修复基本面筛选抽屉中点击行业下拉项会误关抽屉的 bug。
+3. 重构筛选抽屉为「遮罩式」关闭模型，简化实现并顺便修复点击行业下拉项误关抽屉的 bug。
 
 ## Part 1 — 蓝筹判定改为指数成分股
 
@@ -76,21 +76,27 @@ B 优先判定（满足 B 即记 B，否则再判 A）。
 
 候选列表「命中信号」列复用现有 `SignalBadgeList`，无需新增表格列。
 
-## Part 3 — 抽屉 bug 修复
+## Part 3 — 抽屉重构为遮罩式
 
-### 根因
+### 现状与问题
 
-`src/components/ui/filter-drawer.tsx` 的「点击外部关闭」监听挂在 `document` 的 `mousedown` 上。行业下拉用 Radix `Popover`，其内容渲染在 **portal**（不在 `drawerRef` 子树内）。点击下拉项时 `e.target` 位于 portal → `drawerRef.current.contains(target)` 为 false → 误判为点击抽屉外 → `onClose()`。Radix `Select` 同为 portal，存在同样潜在问题。
+`src/components/ui/filter-drawer.tsx` 当前是**非模态**抽屉（`absolute` 浮在结果区左侧，无遮罩），靠挂在 `document` 上的 `mousedown` 监听 + `setTimeout(0)` 实现「点外面关闭」。问题：
 
-### 修法
+- 实现复杂、有时序 hack。
+- bug：行业下拉用 Radix `Popover`，内容渲染在 portal（不在 `drawerRef` 子树内），点击下拉项时 `e.target` 在 portal → 被判为「点抽屉外」→ 误关。`Select` 同为 portal，同样隐患。
 
-在 `handleClickOutside` 中、现有 toggle 按钮排除之后，增加一行：
+### 重构方案（遮罩式）
 
-```ts
-if (target.closest('[data-radix-popper-content-wrapper]')) return
-```
+`FilterDrawer` 改为渲染「遮罩 + 抽屉」两部分（共享组件，基本面与技术面两处一起生效）：
 
-一行同时覆盖 Popover 与 Select，保留「点击空白处关闭抽屉」的交互。
+- **遮罩（scrim）**：抽屉打开时在其父容器内渲染 `absolute inset-0` 的半透明遮罩（如 `bg-ink/20`，带淡入淡出），z-index 低于抽屉（抽屉 `z-30`，遮罩 `z-20`）。点击遮罩 → `onClose()`。
+- **关闭方式**：点遮罩、按 ESC、筛选按钮再次点击、运行筛选后自动关（现有 `runScreen`/技术面 apply 已 `setFilterOpen(false)`）。
+- **删除** `document` 的 `mousedown` 监听与 `setTimeout`。改用 `keydown` 监听 ESC：`if (e.key === 'Escape' && !e.defaultPrevented) onClose()`（`defaultPrevented` 守卫避免与 Radix Popover 自身 ESC 关闭冲突导致双关）。
+- bug 自然消失：遮罩是父容器内的真实元素，Radix 弹层 portal 渲染在 `body` 且 z-index 更高、位于遮罩之上，点击弹层项不会命中遮罩，不触发关闭。
+
+遮罩锚定在抽屉父容器（`App.tsx` 的 `relative flex flex-1` 结果区 / `TechnicalScreenView` 的对应 `relative` 容器），因此遮罩只覆盖结果区，侧边栏与顶栏仍可见可用。
+
+> 注：`IndustryCombobox` 的 Popover、参数 `Select` 无需改动，重构后均不再误关抽屉。
 
 ## 测试
 
@@ -109,6 +115,6 @@ if (target.closest('[data-radix-popper-content-wrapper]')) return
 - `app/fundamental_screen.py`：`_display_signals` 输出 A/B 信号、`WEIGHTS` 增项。
 - `app/presets.py`：删 3 个参数。
 - `src/data/signals.ts`、`src/types.ts`：A/B 信号标签。
-- `src/components/ui/filter-drawer.tsx`：排除 Radix popper 内容。
+- `src/components/ui/filter-drawer.tsx`：重构为遮罩式（scrim + ESC，移除 document 监听）。
 </content>
 </invoke>
