@@ -3,19 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 from app.db import SessionLocal
-from app.models import FinancialReport, Forecast, IndustryIndex, KlineDay, ResearchReport, Stock
+from app.models import FinancialReport, Forecast, IndexConstituent, IndustryIndex, KlineDay, ResearchReport, Stock
 from app.pool_filters import filter_default_pool
 from app.research_signals import alpha_rank, has_research_keyword, keyword_hits, sector_effect
 from app.signals import (
     beat_expect,
+    calc_ttm_yoy,
     high_growth,
     industry_new_high,
+    is_bluechip,
+    BLUECHIP_INDEX_CODES,
     low_position_oversold,
+    oversold_scenario,
     price_new_high,
     profit_new_high,
     risk_industry_down,
     risk_price_new_low,
     risk_profit_decline,
+    risk_structural_decline,
 )
 
 
@@ -43,6 +48,11 @@ def build_fundamental_rows(params: dict) -> list[dict]:
         industry_rows = s.query(IndustryIndex).order_by(IndustryIndex.code, IndustryIndex.date).all()
         research = s.query(ResearchReport).all()
         klines = s.query(KlineDay).order_by(KlineDay.code, KlineDay.date).all()
+        constituents = s.query(IndexConstituent).filter(
+            IndexConstituent.index_code.in_(BLUECHIP_INDEX_CODES)
+        ).all()
+
+    bluechip_codes = {c.stock_code for c in constituents}
 
     latest_report = _latest_by_code(reports)
     reports_by_code = _group_by_code(reports)
@@ -106,6 +116,25 @@ def build_fundamental_rows(params: dict) -> list[dict]:
             peak = max(closes)
             if peak > 0:
                 drawdown_from_high = 1 - closes[-1] / peak
+
+        # ── 蓝筹策略专用数据 ──
+        is_bc = is_bluechip(stock.code, bluechip_codes)
+        ttm_yoy_val = calc_ttm_yoy(report_history)
+        annual_np = next(
+            (rh.net_profit for rh in sorted(report_history, key=lambda x: x.report_date, reverse=True)
+             if rh.report_date.endswith("-12-31") and rh.net_profit is not None),
+            None,
+        )
+        structural_decline = risk_structural_decline(ttm_yoy_val, report_history)
+        _scenario = oversold_scenario(
+            closes, ttm_yoy_val,
+            float(params.get("drawdownMin", 25)) / 100,
+            float(params.get("ttmYoyThreshold", -15)),
+            float(params.get("deepDrawdown", 50)) / 100,
+            float(params.get("deepTtmYoy", -30)),
+            annual_np,
+        )
+
         rows.append(
             {
                 "code": stock.code,
@@ -125,6 +154,14 @@ def build_fundamental_rows(params: dict) -> list[dict]:
                     drawdown_threshold=float(params.get("drawdownMin", 35)) / 100,
                     yoy_threshold=float(params.get("netProfitYoY", 0)),
                 ),
+                # 蓝筹策略专用
+                "is_bluechip": is_bc,
+                "ttm_yoy": ttm_yoy_val,
+                "annual_net_profit": annual_np,
+                "oversold_scenario": _scenario,
+                "oversold_bluechip": _scenario is not None,
+                "risk_structural_decline": structural_decline,
+                # 通用风险信号
                 "risk_profit_decline": risk_profit_decline(report_history),
                 "risk_price_new_low": risk_price_new_low(closes),
                 "risk_industry_down": risk_industry_down(industry_closes),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections import defaultdict
+from typing import Any, Iterable, Optional
 
 
 def _get_value(row: object, key: str) -> Optional[float]:
@@ -118,3 +119,119 @@ def risk_industry_down(arg: object) -> bool:
     if len(values) < 2:
         return False
     return values[-1] < values[-2] < values[0]
+
+
+# ── 蓝筹策略专用信号 ──────────────────────────────────────────
+
+BLUECHIP_INDEX_CODES = {"000016", "000300", "000905"}  # 上证50 / 沪深300 / 中证500
+
+
+def is_bluechip(code: str, bluechip_codes: set[str]) -> bool:
+    """蓝筹判定：股票是否在宽基蓝筹指数成分股集合内。"""
+    return code in bluechip_codes
+
+
+def calc_ttm_yoy(reports: list[Any]) -> Optional[float]:
+    """计算 TTM 同比（精确 TTM → 年报同比 → Q1 同比兜底）"""
+    if not reports:
+        return None
+    by_year: dict[str, dict[str, Any]] = defaultdict(dict)
+    for r in reports:
+        year = r.report_date[:4]
+        month = r.report_date[5:7]
+        if month == "03":
+            by_year[year]["Q1"] = r
+        elif month == "06":
+            by_year[year]["H1"] = r
+        elif month == "09":
+            by_year[year]["Q3"] = r
+        elif month == "12":
+            by_year[year]["Annual"] = r
+
+    years = sorted(by_year.keys())
+    if len(years) < 2:
+        return None
+
+    # ── 方法 1: 精确 TTM ──
+    current_ttm = prior_ttm = None
+    curr_y, prev_y = years[-1], years[-2]
+    if "Q1" in by_year[curr_y] and "Annual" in by_year[prev_y] and "Q1" in by_year[prev_y]:
+        q1n = by_year[curr_y]["Q1"].net_profit
+        ap = by_year[prev_y]["Annual"].net_profit
+        q1p = by_year[prev_y]["Q1"].net_profit
+        if q1n is not None and ap is not None and q1p is not None:
+            current_ttm = q1n + (ap - q1p)
+    if len(years) >= 3:
+        ppy = years[-3]
+        if "Q1" in by_year[prev_y] and "Annual" in by_year[ppy] and "Q1" in by_year[ppy]:
+            q1p = by_year[prev_y]["Q1"].net_profit
+            app = by_year[ppy]["Annual"].net_profit
+            q1pp = by_year[ppy]["Q1"].net_profit
+            if q1p is not None and app is not None and q1pp is not None:
+                prior_ttm = q1p + (app - q1pp)
+    if current_ttm and prior_ttm and prior_ttm > 0:
+        return (current_ttm / prior_ttm - 1) * 100
+
+    # ── 方法 2: 年报同比 ──
+    annual_years = [y for y in years if "Annual" in by_year[y]]
+    if len(annual_years) >= 2:
+        a_new = by_year[annual_years[-1]]["Annual"].net_profit
+        a_old = by_year[annual_years[-2]]["Annual"].net_profit
+        if a_old and a_old > 0 and a_new is not None:
+            return (a_new / a_old - 1) * 100
+
+    # ── 方法 3: Q1 同比兜底 ──
+    if "Q1" in by_year.get(curr_y, {}) and "Q1" in by_year.get(prev_y, {}):
+        q1_new = by_year[curr_y]["Q1"].net_profit_yoy
+        if q1_new is not None:
+            return q1_new
+
+    return None
+
+
+def oversold_scenario(
+    closes: list[float],
+    ttm_yoy: Optional[float],
+    drawdown_min: float = 0.25,
+    ttm_threshold: float = -15,
+    deep_drawdown: float = 0.50,
+    deep_ttm_threshold: float = -30,
+    annual_net_profit: Optional[float] = None,
+) -> Optional[str]:
+    """蓝筹错杀命中的场景：'B'(深度超跌) 优先于 'A'(普通超跌)，都不满足返回 None。"""
+    if not closes or ttm_yoy is None:
+        return None
+    peak = max(closes)
+    if peak <= 0:
+        return None
+    drawdown = 1 - closes[-1] / peak
+
+    if (
+        drawdown >= deep_drawdown
+        and ttm_yoy > deep_ttm_threshold
+        and annual_net_profit is not None
+        and annual_net_profit > 0
+    ):
+        return "B"
+    if drawdown >= drawdown_min and ttm_yoy > ttm_threshold:
+        return "A"
+    return None
+
+
+def risk_structural_decline(
+    ttm_yoy: Optional[float],
+    reports: list[Any],
+) -> bool:
+    """业绩结构恶化：TTM 同比 < -15% 且毛利率同比降 > 3pct 且营收同比 < 0"""
+    if ttm_yoy is None or ttm_yoy >= -15:
+        return False
+    recent = sorted(reports, key=lambda r: r.report_date)
+    recent_with_gm = [r for r in recent if r.gross_margin is not None]
+    if len(recent_with_gm) < 2:
+        return False
+    gm_decline = recent_with_gm[-2].gross_margin - recent_with_gm[-1].gross_margin
+    if gm_decline < 3:
+        return False
+    latest = recent[-1]
+    rev_yoy = latest.revenue_yoy if latest.revenue_yoy is not None else 0
+    return rev_yoy < 0
