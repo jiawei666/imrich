@@ -457,12 +457,16 @@ function ChartBody({
 
 export function PriceChart({
   stockName,
+  stockCode,
+  subTitle,
   klineDay,
   klineWeek,
   klineMonth,
   klineQuarter,
 }: {
   stockName?: string
+  stockCode?: string
+  subTitle?: string
   klineDay: Kline[]
   klineWeek: Kline[]
   klineMonth: Kline[]
@@ -475,7 +479,11 @@ export function PriceChart({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[15px] font-semibold text-ink">{stockName ?? '股价走势'}</span>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[15px] font-semibold text-ink">{stockName ?? '股价走势'}</span>
+          {stockCode && <span className="tnum text-sm text-ink-faint">{stockCode}</span>}
+          {subTitle && <span className="text-[13px] text-ink-soft">{subTitle}</span>}
+        </div>
         <Tabs value={period} onValueChange={(v) => setPeriod(v as KlineTimeframe)}>
           <TabsList className="h-7 p-0.5">
             {PERIODS.map(({ key, label }) => (
