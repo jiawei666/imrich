@@ -4,7 +4,7 @@ import pandas as pd
 
 from app.db import SessionLocal
 from app.indicators import compute_kdj, compute_zhixing_short_trend, compute_zhixing_bull_bear
-from app.models import FinancialReport, Industry, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
+from app.models import FinancialReport, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
 from app.signals import compute_single_quarter_series
 from fastapi import HTTPException
 
@@ -95,15 +95,7 @@ def get_stock_detail(code: str):
             report_dates, [row.revenue for row in financials]
         )
 
-        parent_industry_name = None
-        if stock.industry:
-            industry_row = (
-                s.query(Industry)
-                .filter_by(level=2, name=stock.industry)
-                .first()
-            )
-            if industry_row is not None:
-                parent_industry_name = industry_row.parent_name
+        parent_industry_name = stock.parent_industry
 
     def _quarter(report_date: str) -> str:
         y = report_date[:4]

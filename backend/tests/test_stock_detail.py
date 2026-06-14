@@ -1,6 +1,6 @@
 import pytest
 from app.db import SessionLocal, init_db
-from app.models import FinancialReport, Industry, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
+from app.models import FinancialReport, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
 from app.stock_detail import get_stock_detail
 
 
@@ -44,8 +44,7 @@ def test_get_stock_detail_returns_quarterly_data(db_path):
 def test_get_stock_detail_industry_uses_parent_name(db_path):
     init_db()
     with SessionLocal() as s:
-        s.add(Stock(code="sz000002", name="测试股份", industry="锂电池"))
-        s.add(Industry(code="850111", name="锂电池", level=2, parent_name="电力设备"))
+        s.add(Stock(code="sz000002", name="测试股份", industry="锂电池", parent_industry="电力设备"))
         s.commit()
     detail = get_stock_detail("sz000002")
     assert detail["industry"] == "电力设备"
