@@ -62,7 +62,7 @@ def _new_state():
             RefreshStep("股票列表"), RefreshStep("K线数据（日+周+月+季）")]),
         "fundamental": RefreshGroup(steps=[
             RefreshStep("财报数据"), RefreshStep("业绩预告快报"),
-            RefreshStep("申万行业指数"), RefreshStep("研报元数据"),
+            RefreshStep("行业与指数数据"), RefreshStep("研报元数据"),
             RefreshStep("研报PDF解析")]),
     }
 
@@ -398,9 +398,10 @@ def _refresh_industry_index(
                 stock.industry = industry["name"]
             s.commit()
         step.done = i
-        step.progress = int(i / step.total * 100) if step.total else 100
-    step.progress = 100
-    step.elapsed = "00:00"
+        step.progress = int(i / step.total * 90) if step.total else 90  # 行业占90%，指数占10%
+    # 注意：不在此处设 progress=100，因为还有指数成分股步骤
+    # run_industry_refresh 会在 refresh_index_constituents 完成后设 100
+    # 单独调用 _refresh_industry_index 时，progress 停在 90
 
 
 def run_financial_refresh(financial_fn=None):
@@ -446,8 +447,14 @@ def run_forecasts_refresh(forecast_fn=None, express_fn=None):
         raise
 
 
-def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents_fn=None, industries_first_fn=None):
-    """独立执行步骤3：申万行业指数刷新。"""
+def run_industry_refresh(
+    industries_fn=None,
+    industry_hist_fn=None,
+    constituents_fn=None,
+    industries_first_fn=None,
+    index_constituents_fn=None,
+):
+    """独立执行步骤3：行业与指数数据刷新（申万行业指数 + 宽基指数成分股）。"""
     if industries_fn is None:
         from app.data.fetch_fundamental import get_sw_industries
         industries_fn = get_sw_industries
@@ -465,6 +472,8 @@ def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents
     step.error = None
     try:
         _refresh_industry_index(group, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn)
+        refresh_index_constituents(index_constituents_fn, step=step)
+        step.progress = 100
         step.status = "done"
     except Exception as e:
         step.status = "error"
@@ -472,11 +481,12 @@ def run_industry_refresh(industries_fn=None, industry_hist_fn=None, constituents
         raise
 
 
-def _refresh_index_constituents(
+def refresh_index_constituents(
     constituents_fn: Optional[Callable[[str], list]] = None,
     index_list: Optional[list[tuple[str, str]]] = None,
+    step: Optional[RefreshStep] = None,
 ) -> None:
-    """刷新宽基指数成分股（中证系），供 /indices 接口使用。"""
+    """刷新宽基指数成分股（中证系），供 /indices 接口及蓝筹筛选使用。"""
     if constituents_fn is None:
         from app.data.fetch_fundamental import get_index_constituents
         constituents_fn = get_index_constituents
@@ -484,7 +494,8 @@ def _refresh_index_constituents(
         from app.data.fetch_fundamental import CS_INDEX_LIST
         index_list = CS_INDEX_LIST
 
-    for index_code, index_name in index_list:
+    total = len(index_list)
+    for i, (index_code, index_name) in enumerate(index_list, 1):
         try:
             codes = constituents_fn(index_code)
         except Exception:
@@ -495,6 +506,8 @@ def _refresh_index_constituents(
             for code in codes:
                 s.add(IndexConstituent(index_code=index_code, stock_code=code, index_name=index_name))
             s.commit()
+        if step is not None and total > 0:
+            step.progress = 90 + int(i / total * 10)  # 90%→100%
 
 
 def _all_stock_codes() -> list[str]:
@@ -526,6 +539,7 @@ def run_research_meta_refresh(research_meta_fn=None):
 
 def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None, research_directory=None):
     """独立执行步骤5：研报PDF解析刷新（近一年研报）。依赖步骤4完成。"""
+    _backfill_state_from_db()
     group = STATE["fundamental"]
     step4 = group.steps[3]
     if step4.status != "done":
@@ -578,8 +592,7 @@ def run_fundamental_refresh(
             futs = {
                 pool.submit(run_financial_refresh, financial_fn): 0,
                 pool.submit(run_forecasts_refresh, forecast_fn, express_fn): 1,
-                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn): 2,
-                pool.submit(_refresh_index_constituents, index_constituents_fn): 3,
+                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn): 2,
             }
             errors = []
             for fut in as_completed(futs):
@@ -663,8 +676,12 @@ def _download_and_parse(
 ) -> Optional[tuple[str, str]]:
     if not row.pdf_url:
         return None
-    pdf_path = download_fn(row.pdf_url, directory)
-    return pdf_path, parse_fn(pdf_path)
+    try:
+        pdf_path = download_fn(row.pdf_url, directory)
+        return pdf_path, parse_fn(pdf_path)
+    except Exception:
+        logger.warning("研报PDF下载/解析失败 report_id=%s url=%s，跳过", row.report_id, row.pdf_url, exc_info=True)
+        return None
 
 
 def refresh_research_pdfs(
@@ -694,6 +711,10 @@ def refresh_research_pdfs(
             step.total = len(rows)
             step.done = 0
             step.progress = 0
+        # 全量刷新耗时很长（数千份研报），每个 batch 提交一次，避免进程中途被中断
+        # （如 uvicorn --reload）时丢失已处理的进度。expire_on_commit=False
+        # 避免 commit 后下一 batch 的 worker 线程触发跨线程的延迟加载。
+        s.expire_on_commit = False
         with ThreadPoolExecutor(max_workers=max_workers) as pool, tqdm(total=len(rows), desc="研报PDF解析") as bar:
             for batch_start in range(0, len(rows), max_workers):
                 batch = rows[batch_start:batch_start + max_workers]
@@ -709,10 +730,104 @@ def refresh_research_pdfs(
                         step.done = i
                         step.progress = int(i / step.total * 100) if step.total else 100
                     bar.update(1)
-        s.commit()
+                s.commit()
     if step is not None:
         step.progress = 100
         step.elapsed = "00:00"
+
+
+def _backfill_state_from_db():
+    """根据数据库实际数据回填 STATE 中 idle 步骤的 status/done/total/progress。
+
+    进程重启后 STATE 全部重置为 idle，但数据库可能已有数据。
+    此函数让 STATE 反映真实进度，使依赖检查（如 research-pdfs 依赖 research-meta）不误判。
+    """
+    # kline 回填
+    if STATE["kline"].status != "running":
+        try:
+            with SessionLocal() as s:
+                stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
+                kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
+
+            k_steps = STATE["kline"].steps
+            if stock_count > 0 and k_steps[0].status not in ("running",):
+                k_steps[0].total = max(k_steps[0].total, stock_count)
+                k_steps[0].done = stock_count
+                k_steps[0].progress = int(stock_count / k_steps[0].total * 100)
+                if k_steps[0].status == "idle":
+                    k_steps[0].status = "done"
+
+            if stock_count > 0 and k_steps[1].status not in ("running",):
+                k_steps[1].total = max(k_steps[1].total, stock_count)
+                k_steps[1].done = kline_stock_count
+                k_steps[1].progress = int(kline_stock_count / stock_count * 100)
+                if k_steps[1].status == "idle":
+                    k_steps[1].status = "done"
+        except Exception:
+            pass
+
+    # fundamental 回填
+    if STATE["fundamental"].status != "running":
+        try:
+            with SessionLocal() as s:
+                report_count = s.query(FinancialReport).count()
+                forecast_count = s.query(Forecast).count()
+                industry_count = s.query(IndustryIndex).group_by(IndustryIndex.code).count()
+                research_meta_count = s.query(ResearchReport).filter(ResearchReport.stage == "metadata").count()
+                pdf_cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                recent_parsed_count = (
+                    s.query(ResearchReport)
+                    .filter(ResearchReport.stage == "parsed", ResearchReport.published_at >= pdf_cutoff)
+                    .count()
+                )
+                recent_pending_count = (
+                    s.query(ResearchReport)
+                    .filter(ResearchReport.stage != "parsed", ResearchReport.published_at >= pdf_cutoff)
+                    .count()
+                )
+
+            f_steps = STATE["fundamental"].steps
+
+            if report_count > 0 and f_steps[0].status not in ("running",):
+                f_steps[0].total = max(f_steps[0].total, report_count)
+                f_steps[0].done = report_count
+                f_steps[0].progress = 100
+                if f_steps[0].status == "idle":
+                    f_steps[0].status = "done"
+
+            if forecast_count > 0 and f_steps[1].status not in ("running",):
+                f_steps[1].total = max(f_steps[1].total, forecast_count)
+                f_steps[1].done = forecast_count
+                f_steps[1].progress = 100
+                if f_steps[1].status == "idle":
+                    f_steps[1].status = "done"
+
+            if industry_count > 0 and f_steps[2].status not in ("running",):
+                f_steps[2].total = max(f_steps[2].total, industry_count)
+                f_steps[2].done = industry_count
+                # 行业与指数数据：同时检查 IndustryIndex 和 IndexConstituent
+                with SessionLocal() as s2:
+                    has_index_constituents = s2.query(IndexConstituent).limit(1).count() > 0
+                f_steps[2].progress = 100 if has_index_constituents else 90
+                if f_steps[2].status == "idle":
+                    f_steps[2].status = "done"
+
+            if research_meta_count > 0 and f_steps[3].status not in ("running",):
+                f_steps[3].total = max(f_steps[3].total, research_meta_count)
+                f_steps[3].done = research_meta_count
+                f_steps[3].progress = 100
+                if f_steps[3].status == "idle":
+                    f_steps[3].status = "done"
+
+            recent_pdf_total = recent_parsed_count + recent_pending_count
+            if recent_pdf_total > 0 and f_steps[4].status not in ("running",):
+                f_steps[4].total = recent_pdf_total
+                f_steps[4].done = recent_parsed_count
+                f_steps[4].progress = int(recent_parsed_count / recent_pdf_total * 100)
+                if recent_pending_count == 0 and f_steps[4].status == "idle":
+                    f_steps[4].status = "done"
+        except Exception:
+            pass
 
 
 def get_status_snapshot() -> dict:
@@ -728,76 +843,10 @@ def get_status_snapshot() -> dict:
 
     result = {k: _grp(v) for k, v in STATE.items()}
 
-    # 只在没有活跃任务时用数据库回填进度（兜底，避免进程重启后丢失）
-    # 如果数据库被写锁占用（并发刷新），跳过回填，下次轮询再试
-    if result["kline"]["status"] != "running":
-        try:
-            with SessionLocal() as s:
-                stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
-                kline_stock_count = s.query(KlineDay).group_by(KlineDay.code).count()
+    # 先回填 STATE 本身，再生成快照，保证快照与 STATE 一致
+    _backfill_state_from_db()
 
-            kline_steps = result["kline"]["steps"]
-
-            if stock_count > 0:
-                kline_steps[0]["total"] = max(kline_steps[0]["total"], stock_count)
-                kline_steps[0]["done"] = stock_count
-                kline_steps[0]["progress"] = int(stock_count / kline_steps[0]["total"] * 100)
-
-            if stock_count > 0:
-                kline_steps[1]["total"] = max(kline_steps[1]["total"], stock_count)
-                kline_steps[1]["done"] = kline_stock_count
-                kline_steps[1]["progress"] = int(kline_stock_count / stock_count * 100)
-        except Exception:
-            pass
-
-    if result["fundamental"]["status"] != "running":
-        try:
-            with SessionLocal() as s:
-                report_count = s.query(FinancialReport).count()
-                forecast_count = s.query(Forecast).count()
-                industry_count = s.query(IndustryIndex).group_by(IndustryIndex.code).count()
-                research_meta_count = s.query(ResearchReport).filter(ResearchReport.stage == "metadata").count()
-                research_parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
-
-            f_steps = result["fundamental"]["steps"]
-
-            # 正在运行的步骤由后台任务实时维护 done/total/progress，
-            # 此处的数据库回填仅用于兜底（idle/done/error 状态），不应覆盖实时进度。
-            if report_count > 0 and f_steps[0]["status"] != "running":
-                f_steps[0]["total"] = max(f_steps[0]["total"], report_count)
-                f_steps[0]["done"] = report_count
-                f_steps[0]["progress"] = 100
-                if f_steps[0]["status"] == "idle":
-                    f_steps[0]["status"] = "done"
-
-            if forecast_count > 0 and f_steps[1]["status"] != "running":
-                f_steps[1]["total"] = max(f_steps[1]["total"], forecast_count)
-                f_steps[1]["done"] = forecast_count
-                f_steps[1]["progress"] = 100
-                if f_steps[1]["status"] == "idle":
-                    f_steps[1]["status"] = "done"
-
-            if industry_count > 0 and f_steps[2]["status"] != "running":
-                f_steps[2]["total"] = max(f_steps[2]["total"], industry_count)
-                f_steps[2]["done"] = industry_count
-                f_steps[2]["progress"] = 100
-                if f_steps[2]["status"] == "idle":
-                    f_steps[2]["status"] = "done"
-
-            if research_meta_count > 0 and f_steps[3]["status"] != "running":
-                f_steps[3]["total"] = max(f_steps[3]["total"], research_meta_count)
-                f_steps[3]["done"] = research_meta_count
-                f_steps[3]["progress"] = 100
-                if f_steps[3]["status"] == "idle":
-                    f_steps[3]["status"] = "done"
-
-            if research_parsed_count > 0 and f_steps[4]["status"] != "running":
-                f_steps[4]["total"] = max(f_steps[4]["total"], research_parsed_count)
-                f_steps[4]["done"] = research_parsed_count
-                f_steps[4]["progress"] = 100
-                if f_steps[4]["status"] == "idle":
-                    f_steps[4]["status"] = "done"
-        except Exception:
-            pass
+    # 重新生成回填后的快照
+    result = {k: _grp(v) for k, v in STATE.items()}
 
     return result

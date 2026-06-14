@@ -63,7 +63,7 @@ export function StockDetailPanel({
             </div>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
               <span className="mr-1 shrink-0 text-xs text-ink-soft">命中信号</span>
-              <SignalBadgeList signals={candidate.signals} extra={candidate.extraSignals} />
+              <SignalBadgeList signals={candidate.signals} max={99} />
             </div>
           </div>
         )}

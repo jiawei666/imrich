@@ -89,8 +89,9 @@ FUNDAMENTAL_STEP_MAP = {
 @app.post("/refresh/fundamental/{step}", status_code=202)
 async def refresh_fundamental_step(step: str):
     """单步刷新基本面数据。"""
-    # 依赖检查
+    # 依赖检查（先从数据库回填 STATE，避免进程重启后误判）
     if step in FUNDAMENTAL_STEP_DEPS:
+        refresh._backfill_state_from_db()
         dep_step, msg = FUNDAMENTAL_STEP_DEPS[step]
         dep_idx = FUNDAMENTAL_STEP_MAP.get(dep_step)
         if dep_idx is not None and refresh.STATE["fundamental"].steps[dep_idx].status != "done":

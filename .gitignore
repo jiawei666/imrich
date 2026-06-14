@@ -10,6 +10,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+backend/backend/data/research
 
 # Local data / databases
 *.db

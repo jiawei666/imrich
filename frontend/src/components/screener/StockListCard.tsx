@@ -42,6 +42,8 @@ interface StockListCardProps {
   total: number
   /** 加载中 */
   loading?: boolean
+  /** 筛选运行中（显示蒙版） */
+  screening?: boolean
   /** 加载更多中 */
   loadingMore?: boolean
   /** 当前选中的股票代码 */
@@ -80,6 +82,7 @@ export function StockListCard({
   data,
   total,
   loading = false,
+  screening = false,
   loadingMore = false,
   selectedCode,
   onSelectCode,
@@ -194,7 +197,7 @@ export function StockListCard({
 
   return (
     <Card className="relative">
-      <LoadingOverlay show={loading && data.length > 0} />
+      <LoadingOverlay show={screening || (loading && data.length > 0)} />
       <CardHeader className="flex-row items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <CardTitle>{title}</CardTitle>

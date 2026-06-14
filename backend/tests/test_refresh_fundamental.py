@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from app import refresh
 from app.db import SessionLocal, init_db
@@ -132,7 +133,8 @@ def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
         assert stock2 is None or not stock2.industry
 
     assert group.steps[2].done == 3
-    assert group.steps[2].progress == 100
+    # 行业部分占90%，指数成分股占10%；单独调用 _refresh_industry_index 时停在 90
+    assert group.steps[2].progress == 90
 
 
 def test_refresh_industry_index_writes_industry_dimension_table(db_path):
@@ -214,8 +216,9 @@ def test_refresh_industry_index_updates_progress_incrementally(db_path):
         industries_first_fn=lambda: [],
     )
 
-    assert progress_snapshots == [0, 25, 50, 75]
-    assert step.progress == 100
+    # 行业占90%进度，4个行业：0, 22, 45, 67 (i/4*90)
+    assert progress_snapshots == [0, 22, 45, 67]
+    assert step.progress == 90  # 行业部分完成，指数成分股由 run_industry_refresh 补齐
 
 
 def test_refresh_financial_reports_updates_progress_per_period(db_path):
@@ -450,6 +453,71 @@ def test_refresh_research_pdfs_processes_all_unparsed_reports(db_path, tmp_path)
         assert s.query(ResearchReport).filter_by(report_id="R2").one().stage == "parsed"
 
 
+def test_refresh_research_pdfs_skips_download_failures_and_continues(db_path, tmp_path):
+    """单份研报下载/解析失败（如代理连接错误）不应中断整个刷新，其余研报仍正常解析并落库。"""
+    init_db()
+    recent_date = datetime.now().strftime("%Y-%m-%d")
+    with SessionLocal() as s:
+        s.add(ResearchReport(report_id="R1", code="sz000001", title="a", published_at=recent_date, pdf_url="u1", stage="metadata"))
+        s.add(ResearchReport(report_id="R2", code="sz000002", title="b", published_at=recent_date, pdf_url="u2", stage="metadata"))
+        s.add(ResearchReport(report_id="R3", code="sz000003", title="c", published_at=recent_date, pdf_url="u3", stage="metadata"))
+        s.commit()
+
+    target = tmp_path / "r.pdf"
+    target.write_bytes(b"fake")
+
+    def download_fn(url, directory):
+        if url == "u2":
+            raise ConnectionError("proxy refused")
+        return str(target)
+
+    refresh.refresh_research_pdfs(
+        directory=tmp_path,
+        download_fn=download_fn,
+        parse_fn=lambda path: "正文",
+        max_workers=1,
+    )
+
+    with SessionLocal() as s:
+        assert s.query(ResearchReport).filter_by(report_id="R1").one().stage == "parsed"
+        assert s.query(ResearchReport).filter_by(report_id="R2").one().stage == "metadata"
+        assert s.query(ResearchReport).filter_by(report_id="R3").one().stage == "parsed"
+
+
+def test_refresh_research_pdfs_commits_progress_incrementally(db_path, tmp_path):
+    """全量刷新耗时很长（数千份研报），中途若进程被中断（如 uvicorn --reload），
+    已处理完的研报应已落库，而不是只在最后一次性提交、中断后全部丢失。"""
+    init_db()
+    recent_date = datetime.now().strftime("%Y-%m-%d")
+    with SessionLocal() as s:
+        for i in range(1, 5):
+            s.add(ResearchReport(report_id=f"R{i}", code=f"sz00000{i}", title="t", published_at=recent_date, pdf_url=f"u{i}", stage="metadata"))
+        s.commit()
+
+    target = tmp_path / "r.pdf"
+    target.write_bytes(b"fake")
+
+    processed = []
+
+    def download_fn(url, directory):
+        if url == "u3":
+            raise SystemExit("simulated interruption")
+        processed.append(url)
+        return str(target)
+
+    with pytest.raises(SystemExit):
+        refresh.refresh_research_pdfs(
+            directory=tmp_path,
+            download_fn=download_fn,
+            parse_fn=lambda path: "正文",
+            max_workers=1,
+        )
+
+    with SessionLocal() as s:
+        assert s.query(ResearchReport).filter_by(report_id="R1").one().stage == "parsed"
+        assert s.query(ResearchReport).filter_by(report_id="R2").one().stage == "parsed"
+
+
 def test_refresh_research_pdfs_skips_reports_older_than_one_year(db_path, tmp_path):
     """超过近一年的研报不下载 PDF，节省下载量。"""
     init_db()
@@ -595,7 +663,7 @@ def test_refresh_index_constituents_writes_table(db_path):
     def fake_constituents(index_code):
         return {"000300": ["sz000001", "sh600519"], "000905": ["sz000002"]}[index_code]
 
-    refresh._refresh_index_constituents(
+    refresh.refresh_index_constituents(
         constituents_fn=fake_constituents,
         index_list=[("000300", "沪深300"), ("000905", "中证500")],
     )
@@ -618,7 +686,7 @@ def test_refresh_index_constituents_replaces_existing_and_skips_failed(db_path):
             raise RuntimeError("network down")
         return ["sz000001"]
 
-    refresh._refresh_index_constituents(
+    refresh.refresh_index_constituents(
         constituents_fn=fake_constituents,
         index_list=[("000300", "沪深300"), ("000905", "中证500")],
     )

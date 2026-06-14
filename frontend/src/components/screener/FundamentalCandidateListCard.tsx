@@ -176,7 +176,7 @@ export function FundamentalCandidateListCard({
                     <td className="px-2 py-2 align-middle text-[12px] text-ink-soft">{item.industry || '—'}</td>
                     <td className="tnum px-2 py-2 align-middle text-right text-[14px] font-bold text-ink">{item.score.toFixed(1)}</td>
                     <td className="px-2 py-2 align-middle">
-                      <SignalBadgeList signals={item.signals} extra={item.extraSignals} />
+                      <SignalBadgeList signals={item.signals} />
                     </td>
                     <td className="tnum px-2 py-2 align-middle text-right text-[12px]">{fmtPct(item.netProfitYoY)}</td>
                     <td className="tnum px-2 py-2 align-middle text-right text-[12px]">{fmtPct(item.revenueYoY)}</td>

@@ -84,6 +84,8 @@ class StockRow(BaseModel):
     code: str
     name: str
     industry: Optional[str] = None
+    # 二级行业（即 industry）对应的一级行业，仅筛选结果填充
+    parent_industry: Optional[str] = None
     market_cap: Optional[float] = None
     close: Optional[float] = None
     pct_chg: Optional[float] = None

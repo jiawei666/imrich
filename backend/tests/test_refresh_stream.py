@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from app import refresh
 from app.db import SessionLocal
@@ -81,3 +82,40 @@ def test_get_status_snapshot_backfills_idle_step_from_db(client):
     step0 = snapshot["fundamental"]["steps"][0]
     assert step0["status"] == "done"
     assert step0["progress"] == 100
+
+
+def test_get_status_snapshot_backfills_research_pdfs_step_reflects_remaining_pending(client):
+    """进程重启等原因导致研报PDF解析的内存状态丢失重置后，
+    若近一年内仍有未解析的研报，回填不应误标记为 done/100%（否则会掩盖大量未完成的解析）。"""
+    refresh.reset_state()
+
+    recent_date = datetime.now().strftime("%Y-%m-%d")
+    with SessionLocal() as s:
+        s.add(ResearchReport(report_id="R1", code="sz000001", title="t1", published_at=recent_date, stage="parsed"))
+        for i in range(2, 5):
+            s.add(ResearchReport(report_id=f"R{i}", code=f"sz00000{i}", title=f"t{i}", published_at=recent_date, stage="metadata"))
+        s.commit()
+
+    snapshot = refresh.get_status_snapshot()
+    step4 = snapshot["fundamental"]["steps"][4]
+    assert step4["done"] == 1
+    assert step4["total"] == 4
+    assert step4["progress"] == 25
+    assert step4["status"] != "done"
+
+
+def test_get_status_snapshot_backfills_research_pdfs_step_as_done_when_no_pending(client):
+    """近一年内的研报全部解析完成时，研报PDF解析步骤回填为 done/100%。"""
+    refresh.reset_state()
+
+    recent_date = datetime.now().strftime("%Y-%m-%d")
+    with SessionLocal() as s:
+        s.add(ResearchReport(report_id="R1", code="sz000001", title="t1", published_at=recent_date, stage="parsed"))
+        s.commit()
+
+    snapshot = refresh.get_status_snapshot()
+    step4 = snapshot["fundamental"]["steps"][4]
+    assert step4["done"] == 1
+    assert step4["total"] == 1
+    assert step4["progress"] == 100
+    assert step4["status"] == "done"

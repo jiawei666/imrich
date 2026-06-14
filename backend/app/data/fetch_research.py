@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 import pandas as pd
-import requests
 
 from app.data.fetch_kline import normalize_stock_code_for_sina
 
@@ -49,17 +49,27 @@ def fetch_research_metadata(code: str, ak_fn: Optional[Callable[[str], pd.DataFr
 def download_pdf(
     url: str,
     directory: Path,
-    get_fn: Callable = requests.get,
+    run_fn: Callable = subprocess.run,
     timeout: int = 20,
 ) -> str:
+    """下载研报 PDF。
+
+    pdf.dfcfw.com 的 WAF 会拦截 requests/httpx 等 Python HTTP 客户端（无论是否走代理、
+    是否使用 HTTP/2、是否模拟浏览器 TLS 指纹，均返回反爬 JS 挑战页而非 PDF），
+    只有系统 curl 能稳定通过，因此改用 subprocess 调用 curl 直连下载。
+    """
     directory.mkdir(parents=True, exist_ok=True)
     filename = url.rstrip("/").split("/")[-1] or "research.pdf"
     if not filename.lower().endswith(".pdf"):
         filename = f"{filename}.pdf"
     path = directory / filename
-    resp = get_fn(url, timeout=timeout)
-    resp.raise_for_status()
-    path.write_bytes(resp.content)
+    result = run_fn(
+        ["curl", "-sS", "--fail", "--noproxy", "*", "-m", str(timeout), "-o", str(path), url],
+        capture_output=True,
+        timeout=timeout + 5,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"curl 下载失败 (exit {result.returncode}): {result.stderr.decode(errors='replace')}")
     return str(path)
 
 

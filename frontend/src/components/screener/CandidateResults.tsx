@@ -82,7 +82,7 @@ export function CandidateResults({
                     {c.score.toFixed(1)}
                   </td>
                   <td className="px-2 py-3">
-                    <SignalBadgeList signals={c.signals} extra={c.extraSignals} />
+                    <SignalBadgeList signals={c.signals} />
                   </td>
                   <td className="px-2 py-3">
                     <div className="flex flex-col gap-0.5 text-[12px]">

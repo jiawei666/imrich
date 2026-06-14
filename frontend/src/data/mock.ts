@@ -7,7 +7,6 @@ export const CANDIDATES: Candidate[] = [
     industry: '电力设备',
     score: 92.5,
     signals: ['highGrowth', 'orderFull', 'capexExpand', 'newProduct'],
-    extraSignals: 4,
     netProfitYoY: 52.3,
     revenueYoY: 28.7,
     risks: [
@@ -23,7 +22,6 @@ export const CANDIDATES: Candidate[] = [
     industry: '电子',
     score: 89.1,
     signals: ['beatExpect', 'domesticSub', 'highGrowth'],
-    extraSignals: 3,
     netProfitYoY: 133.6,
     revenueYoY: 65.9,
     risks: [
@@ -39,7 +37,6 @@ export const CANDIDATES: Candidate[] = [
     industry: '半导体',
     score: 85.4,
     signals: ['highGrowth', 'domesticSub', 'capexExpand'],
-    extraSignals: 3,
     netProfitYoY: 48.1,
     revenueYoY: 36.2,
     risks: [
@@ -55,7 +52,6 @@ export const CANDIDATES: Candidate[] = [
     industry: '食品饮料',
     score: 78.7,
     signals: ['industryRecover', 'valuationRepair'],
-    extraSignals: 2,
     netProfitYoY: 18.7,
     revenueYoY: 15.4,
     risks: [
@@ -71,7 +67,6 @@ export const CANDIDATES: Candidate[] = [
     industry: '通信',
     score: 75.2,
     signals: ['highGrowth', 'orderFull'],
-    extraSignals: 2,
     netProfitYoY: 41.3,
     revenueYoY: 30.8,
     risks: [

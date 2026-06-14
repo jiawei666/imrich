@@ -170,7 +170,7 @@ def run_screen_result(preset_id: str, params: dict | None = None, history_date: 
     - 两者互斥
     """
     from app.db import SessionLocal as _SL
-    from app.models import Stock as _Stock
+    from app.models import Stock as _Stock, Industry as _Industry
 
     if params is not None and history_date is not None:
         raise ValueError("params 和 history_date 不可同时传入")
@@ -190,12 +190,23 @@ def run_screen_result(preset_id: str, params: dict | None = None, history_date: 
             for row in s.query(_Stock.code, _Stock.market_cap).filter(_Stock.code.in_(codes)).all():
                 cap_map[row.code] = row.market_cap
 
+    # 补充一级行业（二级行业 industry 的父级）
+    industry_names = {c["industry"] for c in candidates if c.get("industry")}
+    parent_map: dict[str, str | None] = {}
+    if industry_names:
+        with _SL() as s:
+            for row in s.query(_Industry.name, _Industry.parent_name).filter(
+                _Industry.level == 2, _Industry.name.in_(industry_names)
+            ).all():
+                parent_map[row.name] = row.parent_name
+
     items = []
     for c in candidates:
         items.append({
             "code": c["code"],
             "name": c["name"],
             "industry": c.get("industry") or None,
+            "parent_industry": parent_map.get(c.get("industry") or "") or None,
             "market_cap": cap_map.get(c["code"]),
             "close": c.get("close"),
             "pct_chg": c.get("pctChg"),
@@ -229,7 +240,6 @@ def run_fundamental_screen_result(preset_id: str, params: dict | None = None) ->
                 "industry": r.industry,
                 "score": r.score,
                 "signals": json.loads(r.signals),
-                "extraSignals": r.extra_signals,
                 "netProfitYoY": r.net_profit_yoy,
                 "revenueYoY": r.revenue_yoy,
                 "risks": json.loads(r.risks),
@@ -252,7 +262,6 @@ def run_fundamental_screen_result(preset_id: str, params: dict | None = None) ->
                     industry=c["industry"],
                     score=c["score"],
                     signals=json.dumps(c["signals"]),
-                    extra_signals=c["extraSignals"],
                     net_profit_yoy=c["netProfitYoY"],
                     revenue_yoy=c["revenueYoY"],
                     drawdown_from_high=c.get("drawdownFromHigh", 0),

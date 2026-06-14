@@ -238,6 +238,11 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setSelectedName(name)
   }, [])
 
+  const selectedRow = useMemo(
+    () => stockData.find((s) => s.code === selectedCode),
+    [stockData, selectedCode],
+  )
+
   return (
     <div className="relative flex flex-1 overflow-hidden">
       <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} title={preset?.name ?? '技术面战法'}>
@@ -257,6 +262,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
             data={stockData}
             total={stockTotal}
             loading={stockLoading}
+            screening={screening}
             loadingMore={stockLoadingMore}
             selectedCode={selectedCode}
             onSelectCode={handleSelectCode}
@@ -278,6 +284,17 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         <div className="min-w-0">
           <Card className="relative">
             <LoadingOverlay show={klineLoading} />
+            {selectedCode && (
+              <div className="flex items-baseline gap-2.5 border-b border-line-soft px-5 py-3">
+                <h2 className="text-lg font-bold text-ink">{selectedName}</h2>
+                <span className="tnum text-sm text-ink-faint">{selectedCode}</span>
+                {(selectedRow?.parent_industry || selectedRow?.industry) && (
+                  <span className="ml-1 text-[13px] text-ink-soft">
+                    {selectedRow?.parent_industry ?? '—'} · {selectedRow?.industry ?? '—'}
+                  </span>
+                )}
+              </div>
+            )}
             <CardContent className="pt-5">
               <PriceChart
                 stockName={selectedName}

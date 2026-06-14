@@ -1,6 +1,8 @@
+import subprocess
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from app.data.fetch_research import download_pdf, fetch_research_metadata, parse_pdf_text, parse_research_row
 
@@ -75,14 +77,39 @@ def test_fetch_research_metadata_returns_empty_when_no_reports():
 
 
 def test_download_pdf_writes_bytes(tmp_path):
-    class Resp:
-        content = b"%PDF-1.4 fake"
+    """curl 把响应体写到 -o 指定的路径；download_pdf 应返回该路径。"""
+    def run_fn(cmd, capture_output, timeout):
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        out_path.write_bytes(b"%PDF-1.4 fake")
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
 
-        def raise_for_status(self):
-            return None
-
-    out = download_pdf("https://example.test/r1.pdf", tmp_path, get_fn=lambda url, timeout: Resp())
+    out = download_pdf("https://pdf.dfcfw.com/pdf/r1.pdf", tmp_path, run_fn=run_fn)
     assert Path(out).read_bytes() == b"%PDF-1.4 fake"
+
+
+def test_download_pdf_bypasses_proxy(tmp_path):
+    """pdf.dfcfw.com 经代理访问会被反爬拦截返回JS挑战页而非真实PDF，下载需绕过代理直连。"""
+    captured = {}
+
+    def run_fn(cmd, capture_output, timeout):
+        captured["cmd"] = cmd
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        out_path.write_bytes(b"%PDF-1.4 fake")
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    download_pdf("https://pdf.dfcfw.com/pdf/r1.pdf", tmp_path, run_fn=run_fn)
+
+    assert "--noproxy" in captured["cmd"]
+
+
+def test_download_pdf_raises_on_curl_failure(tmp_path):
+    """东财PDF CDN的WAF会对部分请求返回567等错误码；curl --fail 非0退出码应转为异常，
+    供上层（_download_and_parse）捕获并跳过、留待下次重试。"""
+    def run_fn(cmd, capture_output, timeout):
+        return subprocess.CompletedProcess(cmd, 22, b"", b"curl: (22) The requested URL returned error: 567")
+
+    with pytest.raises(RuntimeError):
+        download_pdf("https://pdf.dfcfw.com/pdf/r1.pdf", tmp_path, run_fn=run_fn)
 
 
 def test_parse_pdf_text_uses_injected_parser(tmp_path):

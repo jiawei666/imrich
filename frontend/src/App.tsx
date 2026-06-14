@@ -49,7 +49,7 @@ export default function App() {
   const activityTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   // 上报后台任务状态，供 TopBar 实时动态区展示；done/error 状态 3 秒后自动消失
-  const reportActivity = (id: string, status: ActivityStatus, label: string, detail?: string) => {
+  const reportActivity = useCallback((id: string, status: ActivityStatus, label: string, detail?: string) => {
     const timers = activityTimersRef.current
     if (timers[id]) {
       clearTimeout(timers[id])
@@ -62,7 +62,7 @@ export default function App() {
         delete timers[id]
       }, 3000)
     }
-  }
+  }, [])
 
   useEffect(() => {
     api.presets().then(setPresets).catch(() => setPresets([]))
@@ -83,6 +83,8 @@ export default function App() {
   const runScreen = useCallback(async () => {
     setScreening(true)
     setFilterOpen(false)
+    const label = `${activePreset?.name ?? '基本面'}筛选`
+    reportActivity('fundamental-screen', 'running', label)
     try {
       const res = await api.screenFundamentalResult(strategy, paramValues)
       setScreenItems(res.items)
@@ -92,13 +94,15 @@ export default function App() {
         setSelectedCode(res.items[0].code)
         setSelectedCandidate(res.items[0])
       }
+      reportActivity('fundamental-screen', 'done', label, `共 ${res.total} 只入选`)
     } catch {
       setScreenItems([])
       setScreenTotal(0)
+      reportActivity('fundamental-screen', 'error', label, '请求失败')
     } finally {
       setScreening(false)
     }
-  }, [strategy, paramValues])
+  }, [strategy, paramValues, activePreset, reportActivity])
 
   // 基本面：加载上次结果 + 指数列表
   const loadFundamentalCached = useCallback(async (preset: Preset) => {
@@ -106,6 +110,8 @@ export default function App() {
     setParamValues(defaults)
     setSelectedCandidate(null)
     setScreening(true)
+    const label = `${preset.name}加载`
+    reportActivity('fundamental-screen', 'running', label)
     try {
       const res = await api.screenFundamentalResult(preset.id)
       setScreenItems(res.items)
@@ -117,14 +123,16 @@ export default function App() {
       } else {
         setSelectedCode('')
       }
+      reportActivity('fundamental-screen', 'done', label, `共 ${res.total} 只`)
     } catch {
       setScreenItems([])
       setScreenTotal(0)
       setSelectedCode('')
+      reportActivity('fundamental-screen', 'error', label, '加载失败')
     } finally {
       setScreening(false)
     }
-  }, [])
+  }, [reportActivity])
 
   const loadIndexData = useCallback(async () => {
     try {
@@ -248,7 +256,7 @@ export default function App() {
             </FilterDrawer>
 
             {/* 主区域：结果列表 + 详情 */}
-            <main className="grid flex-1 grid-cols-1 gap-5 overflow-hidden p-6 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <main className="grid flex-1 grid-cols-1 gap-5 overflow-hidden p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
               <div className="flex min-h-0 flex-col">
                 <FundamentalCandidateListCard
                   items={screenItems}
