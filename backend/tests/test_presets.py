@@ -54,3 +54,16 @@ def test_build_selector_unknown_raises():
     import pytest
     with pytest.raises(KeyError):
         build_selector("nope", {})
+
+
+def test_oversold_bluechip_drops_market_cap_and_quality_params():
+    p = next(p for p in get_presets() if p["id"] == "oversold-bluechip")
+    keys = {param["key"] for param in p["params"]}
+    assert "bluechipMarketCap" not in keys
+    assert "bluechipProfitQuarters" not in keys
+    assert "bluechipMinGrossMargin" not in keys
+    # 保留的 6 个
+    assert keys == {
+        "drawdownMin", "ttmYoyThreshold", "deepDrawdown",
+        "deepTtmYoy", "keywordWindow", "industry",
+    }

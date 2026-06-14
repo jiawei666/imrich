@@ -57,8 +57,10 @@ _FUNDAMENTAL_PRESETS = [
     {
         "id": "oversold-bluechip", "category": "fundamental", "name": "低位错杀蓝筹",
         "params": [
-            {"key": "drawdownMin", "label": "距一年高回撤下限", "value": 35, "min": 10, "max": 80, "step": 5, "unit": "%"},
-            {"key": "netProfitYoY", "label": "净利润同比下限", "value": 0, "min": -50, "max": 100, "step": 5, "unit": "%"},
+            {"key": "drawdownMin", "label": "距一年高回撤下限", "value": 25, "min": 10, "max": 60, "step": 5, "unit": "%"},
+            {"key": "ttmYoyThreshold", "label": "TTM同比容忍下限", "value": -15, "min": -40, "max": 10, "step": 5, "unit": "%"},
+            {"key": "deepDrawdown", "label": "深度超跌回撤", "value": 50, "min": 30, "max": 70, "step": 5, "unit": "%"},
+            {"key": "deepTtmYoy", "label": "深度超跌TTM容忍", "value": -30, "min": -50, "max": 0, "step": 5, "unit": "%"},
             {"key": "keywordWindow", "label": "研报关键词时间窗", "value": 90, "min": 30, "max": 180, "step": 30, "unit": "日"},
             {"key": "industry", "label": "行业过滤", "value": "", "type": "select", "options": []},
         ],
