@@ -14,6 +14,7 @@ class Stock(Base):
     market_cap: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 亿元
     listed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 申万行业，阶段2填充
+    parent_industry: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 申万一级行业
     is_st: Mapped[bool] = mapped_column(Boolean, default=False)
     is_bj: Mapped[bool] = mapped_column(Boolean, default=False)
     delisted_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
