@@ -18,6 +18,8 @@ export const SIGNAL_META: Record<
   industryRecover: { label: '行业复苏', tone: 'neutral' },
   valuationRepair: { label: '估值修复', tone: 'neutral' },
   oversold: { label: '低位超跌', tone: 'neutral' },
+  oversoldBluechipA: { label: '错杀·普通超跌', tone: 'neutral' },
+  oversoldBluechipB: { label: '错杀·深度超跌', tone: 'ink' },
 }
 
 // 研报关键词信号已由后端 _display_signals 统一返回在 signals[] 中

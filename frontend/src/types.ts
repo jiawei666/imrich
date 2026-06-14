@@ -13,6 +13,8 @@ export type SignalKey =
   | 'industryRecover' // 行业复苏
   | 'valuationRepair' // 估值修复
   | 'oversold' // 低位超跌
+  | 'oversoldBluechipA' // 错杀·普通超跌
+  | 'oversoldBluechipB' // 错杀·深度超跌
 
 export interface Candidate {
   code: string
@@ -20,7 +22,6 @@ export interface Candidate {
   industry: string
   score: number
   signals: SignalKey[]
-  extraSignals: number
   netProfitYoY: number
   revenueYoY: number
   risks: RiskItem[]
@@ -221,6 +222,7 @@ export interface StockRow {
   code: string
   name: string
   industry: string | null
+  parent_industry?: string | null
   market_cap: number | null
   close: number | null
   pct_chg: number | null
