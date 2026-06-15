@@ -167,7 +167,7 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
                   total={screenTotal}
                   updatedAt={screenUpdatedAt}
                   selectedCode={selectedCode}
-                  onSelectCode={(code, _name) => { setSelectedCode(code); setSelectedCandidate(screenItems.find(i => i.code === code) ?? null) }}
+                  onSelectCode={(code) => { setSelectedCode(code); setSelectedCandidate(screenItems.find(i => i.code === code) ?? null) }}
                   indices={indexList}
                   indexConstituentMap={indexConstituentMap}
                   showDrawdown={strategy === 'oversold-bluechip'}

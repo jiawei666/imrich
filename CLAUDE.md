@@ -71,10 +71,13 @@ npm run lint      # eslint
 
 ### 前端结构
 
-`src/App.tsx` 是单一容器组件，持有所有状态（当前策略、筛选条件、选中股票、候选列表、刷新状态等），无路由、无全局状态库。布局：`Sidebar` + `StrategySidebar`（策略切换）+ 主区。主区按策略类别（`STRATEGY_CATEGORY`）二分：技术面渲染 `TechnicalScreenView`，基本面渲染 `FilterPanel` + `CandidateResults` + `StockDetailPanel` 三段。
+`src/App.tsx` 是瘦身外壳，只持有跨页面共享状态：`view`（`'home' | 'screen'`，默认 `'home'`）和 `strategy`（`StrategyId`）。渲染结构：`Sidebar`（受控）+ `StrategySidebar`（仅 screen 视图）+ `HomePage` / `ScreenPage`。
 
+- `src/pages/HomePage.tsx`：首页数据更新看板。自包含组件，自己订阅 `/refresh/status` SSE 并拉取 `/meta`。7 个任务卡片（配置数组 `TASKS` 驱动）+ 摘要卡（"一键更新全部"）。
+- `src/pages/ScreenPage.tsx`：选股页，承接原 App.tsx 中选股相关的全部状态与 JSX。`forwardRef` 暴露 `toggleFilter()`。根据策略类别渲染 `TechnicalScreenView` 或基本面三段式布局。
+- `src/components/layout/PageHeader.tsx`：共享头部组件（仅 `title: string`），替代原 `TopBar.tsx`。
 - 所有后端调用集中在 `src/lib/api.ts`；类型定义在 `src/types.ts`。
-- 刷新进行中（status === 'running'）时 App 用 `setInterval` 每 3s 轮询 `/refresh/status` 与 `/meta`。
+- 刷新相关端点：`POST /refresh/stock-list`、`POST /refresh/kline`、`POST /refresh/all`、`POST /refresh/fundamental/{step}`。当 `STATE["all"].status == "running"` 时所有 `/refresh/*` POST 返回 409。
 - `src/data/mock.ts`、`src/data/signals.ts` 提供初始/兜底 mock 数据（后端不可用时降级展示）。
 - UI 组件库为本地 shadcn 风格（`src/components/ui/`，基于 Radix + class-variance-authority），图表用 echarts-for-react。
 
