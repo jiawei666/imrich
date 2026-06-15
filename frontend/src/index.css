@@ -74,3 +74,27 @@
     background: #cabf9b;
   }
 }
+
+/* 数据工厂流动连线动画 */
+@keyframes flow-dash {
+  to {
+    background-position-x: 14px;
+  }
+}
+
+@keyframes flow-comet {
+  0% {
+    left: -8px;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
