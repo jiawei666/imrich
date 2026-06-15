@@ -1,106 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
-  CandlestickChart,
-  Check,
-  Database,
-  FileDown,
-  FileSearch,
-  FileText,
   Loader2,
-  Megaphone,
-  PieChart,
   RotateCw,
-  type LucideIcon,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ProgressBar } from '@/components/ui/progress'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { api } from '@/lib/api'
-import type { MetaResponse, RefreshStatus, RefreshStep } from '@/types'
+import type { MetaResponse, RefreshStatus } from '@/types'
+import {
+  type RefreshTaskConfig,
+  TASKS,
+  isStepDone,
+  StatusBadge,
+} from '@/components/home/refreshStatus'
 
 /* ─── 配置 ─── */
-
-interface RefreshTaskConfig {
-  key: string
-  label: string
-  description: string
-  icon: LucideIcon
-  step: (status: RefreshStatus) => RefreshStep
-  updatedAt: (meta: MetaResponse) => string | null
-  trigger: () => Promise<unknown>
-  dependsOn?: string[]
-}
-
-const TASKS: RefreshTaskConfig[] = [
-  {
-    key: 'stock-list',
-    label: '股票列表',
-    description: '全市场股票名称、行业分类与上市状态',
-    icon: Database,
-    step: (s) => s.kline.steps[0],
-    updatedAt: (m) => m.stockList.updatedAt,
-    trigger: () => api.refreshStockList(),
-  },
-  {
-    key: 'kline-data',
-    label: 'K线数据（日+周+月+季）',
-    description: '日 / 周 / 月 / 季 K 线，技术面选股的基础行情数据',
-    icon: CandlestickChart,
-    step: (s) => s.kline.steps[1],
-    updatedAt: (m) => m.klineDay.updatedAt,
-    trigger: () => api.refreshKline(),
-    dependsOn: ['stock-list'],
-  },
-  {
-    key: 'financial',
-    label: '财报数据',
-    description: '最新一期财务报表，含营收、净利润等核心指标',
-    icon: FileText,
-    step: (s) => s.fundamental.steps[0],
-    updatedAt: (m) => m.financialReports.updatedAt,
-    trigger: () => api.refreshFundamentalStep('financial'),
-  },
-  {
-    key: 'forecasts',
-    label: '业绩预告快报',
-    description: '上市公司业绩预告与业绩快报',
-    icon: Megaphone,
-    step: (s) => s.fundamental.steps[1],
-    updatedAt: (m) => m.forecasts.updatedAt,
-    trigger: () => api.refreshFundamentalStep('forecasts'),
-  },
-  {
-    key: 'industry',
-    label: '行业与指数数据',
-    description: '申万行业分类及行业指数走势',
-    icon: PieChart,
-    step: (s) => s.fundamental.steps[2],
-    updatedAt: (m) => m.industryIndex.updatedAt,
-    trigger: () => api.refreshFundamentalStep('industry'),
-  },
-  {
-    key: 'research-meta',
-    label: '研报元数据',
-    description: '个股研报标题、机构、发布日期等元信息',
-    icon: FileSearch,
-    step: (s) => s.fundamental.steps[3],
-    updatedAt: (m) => m.researchReports.stage1UpdatedAt,
-    trigger: () => api.refreshFundamentalStep('research-meta'),
-    dependsOn: ['stock-list'],
-  },
-  {
-    key: 'research-pdfs',
-    label: '研报PDF解析',
-    description: '下载并解析候选股研报全文（依赖研报元数据）',
-    icon: FileDown,
-    step: (s) => s.fundamental.steps[4],
-    updatedAt: (m) => m.researchReports.stage2UpdatedAt,
-    trigger: () => api.refreshFundamentalStep('research-pdfs'),
-    dependsOn: ['research-meta'],
-  },
-]
 
 const DOMAINS: { title: string; keys: string[]; gridClass: string }[] = [
   { title: '技术面数据', keys: ['stock-list', 'kline-data'], gridClass: 'grid-cols-1 lg:grid-cols-2' },
@@ -110,40 +27,6 @@ const DOMAINS: { title: string; keys: string[]; gridClass: string }[] = [
     gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
   },
 ]
-
-/* ─── 辅助 ─── */
-
-function isStepDone(step: RefreshStep): boolean {
-  return step.status === 'done' || (step.status === 'idle' && step.total > 0)
-}
-
-function StatusBadge({ step }: { step: RefreshStep }) {
-  if (step.status === 'running') {
-    return (
-      <span className="flex items-center gap-1.5 text-[12px] text-brand">
-        <Loader2 className="size-3.5 animate-spin" />
-        {step.progress}%
-      </span>
-    )
-  }
-  if (step.status === 'error') {
-    return (
-      <span className="flex items-center gap-1 text-[12px] text-down" title={step.error ?? undefined}>
-        <AlertCircle className="size-3.5" />
-        失败
-      </span>
-    )
-  }
-  if (isStepDone(step)) {
-    return (
-      <span className="flex items-center gap-1 text-[12px] text-up">
-        <Check className="size-3.5" />
-        已完成
-      </span>
-    )
-  }
-  return <span className="text-[12px] text-ink-faint">待执行</span>
-}
 
 /* ─── 任务卡片 ─── */
 
