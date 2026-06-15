@@ -57,20 +57,44 @@ def test_stock_kline_endpoint(client):
 def test_refresh_kline_triggers_background(client, monkeypatch):
     refresh.reset_state()
     called = {}
-    monkeypatch.setattr(refresh, "run_kline_refresh",
+    monkeypatch.setattr(refresh, "run_kline_data_refresh",
                         lambda *a, **k: called.setdefault("ran", True))
     r = client.post("/refresh/kline")
     assert r.status_code in (200, 202)
     assert called.get("ran") is True
 
 
-def test_refresh_fundamental_triggers_background(client, monkeypatch):
+def test_refresh_stock_list_triggers_background(client, monkeypatch):
     refresh.reset_state()
     called = {}
-    monkeypatch.setattr(refresh, "run_fundamental_refresh", lambda *a, **k: called.setdefault("ran", True))
-    r = client.post("/refresh/fundamental")
+    monkeypatch.setattr(refresh, "run_stock_list_refresh",
+                        lambda *a, **k: called.setdefault("ran", True))
+    r = client.post("/refresh/stock-list")
     assert r.status_code in (200, 202)
     assert called.get("ran") is True
+
+
+def test_refresh_all_triggers_background(client, monkeypatch):
+    refresh.reset_state()
+    called = {}
+    monkeypatch.setattr(refresh, "run_full_refresh",
+                        lambda *a, **k: called.setdefault("ran", True))
+    r = client.post("/refresh/all")
+    assert r.status_code in (200, 202)
+    assert called.get("ran") is True
+
+
+def test_refresh_rejected_when_all_running(client, monkeypatch):
+    refresh.reset_state()
+    refresh.STATE["all"].status = "running"
+    r = client.post("/refresh/kline")
+    assert r.status_code == 409
+    r = client.post("/refresh/stock-list")
+    assert r.status_code == 409
+    r = client.post("/refresh/all")
+    assert r.status_code == 409
+    r = client.post("/refresh/fundamental/financial")
+    assert r.status_code == 409
 
 
 def test_screen_dispatches_fundamental_strategy(client, monkeypatch):
