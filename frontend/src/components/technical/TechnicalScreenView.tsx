@@ -6,7 +6,7 @@ import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
 import { TechnicalFilterCard } from './TechnicalFilterCard'
 import { api } from '@/lib/api'
-import type { ActivityStatus, Kline, KlineTimeframe, Preset, StrategyId, StockRow, ScreenSnapshotMeta, StockSortField, SortOrder } from '@/types'
+import type { Kline, KlineTimeframe, Preset, StrategyId, StockRow, ScreenSnapshotMeta, StockSortField, SortOrder } from '@/types'
 
 const EMPTY_KLINE: Record<KlineTimeframe, Kline[]> = { day: [], week: [], month: [], quarter: [] }
 
@@ -17,11 +17,9 @@ export interface TechnicalScreenViewHandle {
 export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   strategy: StrategyId
   preset: Preset | null
-  onActivity?: (id: string, status: ActivityStatus, label: string, detail?: string) => void
 }>(function TechnicalScreenView({
   strategy,
   preset,
-  onActivity,
 }, ref) {
   const [paramValues, setParamValues] = useState<Record<string, number>>({})
   const [selectedCode, setSelectedCode] = useState<string>('')
@@ -180,8 +178,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     screeningRef.current = true
     setScreening(true)
     setFilterOpen(false)
-    const label = `${preset?.name ?? '技术面'}筛选`
-    onActivity?.('technical-screen', 'running', label)
     try {
       const res = await api.screenResult({ preset: strategy, params: paramValues })
       setStockData(res.items)
@@ -193,19 +189,17 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         setSelectedCode(res.items[0].code)
         setSelectedName(res.items[0].name)
       }
-      onActivity?.('technical-screen', 'done', label, `共 ${res.total} 只入选`)
       // 刷新历史列表
       loadHistoryList()
     } catch {
       setStockData([])
       setStockTotal(0)
       setDataSource('screen')
-      onActivity?.('technical-screen', 'error', label, '请求失败')
     } finally {
       screeningRef.current = false
       setScreening(false)
     }
-  }, [strategy, paramValues, preset, onActivity, loadHistoryList])
+  }, [strategy, paramValues, preset, loadHistoryList])
 
   // ---- 选择历史日期 ----
   const handleSelectHistoryDate = useCallback(async (date: string) => {
