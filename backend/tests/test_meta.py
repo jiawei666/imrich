@@ -18,3 +18,4 @@ def test_get_meta_reports_latest_timestamps(db_path):
     assert meta["klineDay"]["updatedAt"] == "2026-06-10"
     assert meta["financialReports"]["reportPeriod"] == "2026Q1"
     assert meta["researchReports"]["stage2CandidateCount"] == 1
+    assert meta["researchReports"]["stage2UpdatedAt"] == "2026-06-02 10:00:00"
