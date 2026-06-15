@@ -395,8 +395,16 @@ def _refresh_industry_index(
             for code in constituents:
                 stock = s.get(Stock, code)
                 if stock is None:
-                    stock = Stock(code=code, name="", is_st=False, is_bj=code.startswith("bj"))
-                    s.add(stock)
+                    try:
+                        stock = Stock(code=code, name="", is_st=False, is_bj=code.startswith("bj"))
+                        s.add(stock)
+                        s.flush()
+                    except Exception:
+                        # 并发场景下 run_stock_list_refresh 可能已插入同名股票
+                        s.rollback()
+                        stock = s.get(Stock, code)
+                        if stock is None:
+                            raise
                 stock.industry = industry["name"]
                 stock.parent_industry = industry.get("parent_name")
             s.commit()
@@ -574,7 +582,8 @@ def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None,
         raise
 
 
-def run_fundamental_refresh(
+def run_full_refresh(
+    stock_list_constituents_fn=None, kline_fn=None,
     financial_fn=None, forecast_fn=None, express_fn=None,
     industries_fn=None, industry_hist_fn=None, constituents_fn=None,
     industries_first_fn=None, index_constituents_fn=None,
@@ -582,39 +591,70 @@ def run_fundamental_refresh(
     research_download_fn=None, research_parse_fn=None,
     research_directory=None,
 ) -> None:
-    """一键全刷：步骤1/2/3并发，4→5串行。"""
-    include_research = any(
-        fn is not None
-        for fn in (research_meta_fn, research_download_fn, research_parse_fn)
-    )
-    group = STATE["fundamental"]
+    """一键更新全部：按依赖图分三阶段并发执行 7 个任务。
+
+    阶段1（并行）: ①股票列表 ③财报 ④预告快报 ⑤行业指数
+    阶段2（①完成后并行）: ②K线数据 ⑥研报元数据
+    阶段3（⑥完成后）: ⑦研报PDF解析
+    """
+    group = STATE["all"]
+    if group.status == "running":
+        return
     group.status = "running"
+    group.error = None
+    # 同步标记子组为 running
+    STATE["kline"].status = "running"
+    STATE["fundamental"].status = "running"
     try:
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futs = {
-                pool.submit(run_financial_refresh, financial_fn): 0,
-                pool.submit(run_forecasts_refresh, forecast_fn, express_fn): 1,
-                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn): 2,
-            }
+        with ThreadPoolExecutor(max_workers=7) as pool:
+            all_futures = []
+            # 阶段1：无依赖，并行提交
+            stock_list_fut = pool.submit(run_stock_list_refresh, stock_list_constituents_fn)
+            all_futures += [
+                stock_list_fut,
+                pool.submit(run_financial_refresh, financial_fn),
+                pool.submit(run_forecasts_refresh, forecast_fn, express_fn),
+                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn),
+            ]
+            # 阶段2：① 完成后提交
+            stock_list_fut.exception()  # 阻塞等待①（成功或失败都继续）
+            research_meta_fut = pool.submit(run_research_meta_refresh, research_meta_fn)
+            all_futures += [
+                pool.submit(run_kline_data_refresh, kline_fn),
+                research_meta_fut,
+            ]
+            # 阶段3：⑥ 完成后提交
+            research_meta_fut.exception()
+            all_futures.append(
+                pool.submit(run_research_pdfs_refresh, research_download_fn, research_parse_fn, research_directory)
+            )
             errors = []
-            for fut in as_completed(futs):
-                try:
-                    fut.result()
-                except Exception as exc:
-                    errors.append(exc)  # 错误已记录在 step.error 中
-            if errors:
-                raise errors[0]
-
-        if include_research:
-            run_research_meta_refresh(research_meta_fn)
-            run_research_pdfs_refresh(research_download_fn, research_parse_fn, research_directory)
-
+            for fut in as_completed(all_futures):
+                exc = fut.exception()
+                if exc is not None:
+                    errors.append(exc)
+        if errors:
+            raise errors[0]
         group.status = "done"
         group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 同步标记子组为 done（子任务各自管理 step，但 group 可能未更新）
+        now_str = group.updatedAt
+        fg = STATE["fundamental"]
+        if all(s.status == "done" for s in fg.steps):
+            fg.status = "done"
+            fg.updatedAt = now_str
+        kg = STATE["kline"]
+        if all(s.status == "done" for s in kg.steps):
+            kg.status = "done"
+            kg.updatedAt = now_str
     except Exception as e:
         group.status = "error"
         group.error = str(e)
+        # 同步标记 fundamental/kline 组为 error（子任务已设置 step.error，但 group 可能未更新）
+        for g in (STATE["fundamental"], STATE["kline"]):
+            if g.status == "running":
+                g.status = "error"
         raise
 
 
