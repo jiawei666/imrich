@@ -17,7 +17,7 @@ export interface TechnicalScreenViewHandle {
 export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   strategy: StrategyId
   preset: Preset | null
-  onActivity: (id: string, status: ActivityStatus, label: string, detail?: string) => void
+  onActivity?: (id: string, status: ActivityStatus, label: string, detail?: string) => void
 }>(function TechnicalScreenView({
   strategy,
   preset,
@@ -181,7 +181,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setScreening(true)
     setFilterOpen(false)
     const label = `${preset?.name ?? '技术面'}筛选`
-    onActivity('technical-screen', 'running', label)
+    onActivity?.('technical-screen', 'running', label)
     try {
       const res = await api.screenResult({ preset: strategy, params: paramValues })
       setStockData(res.items)
@@ -193,14 +193,14 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         setSelectedCode(res.items[0].code)
         setSelectedName(res.items[0].name)
       }
-      onActivity('technical-screen', 'done', label, `共 ${res.total} 只入选`)
+      onActivity?.('technical-screen', 'done', label, `共 ${res.total} 只入选`)
       // 刷新历史列表
       loadHistoryList()
     } catch {
       setStockData([])
       setStockTotal(0)
       setDataSource('screen')
-      onActivity('technical-screen', 'error', label, '请求失败')
+      onActivity?.('technical-screen', 'error', label, '请求失败')
     } finally {
       screeningRef.current = false
       setScreening(false)
