@@ -64,6 +64,7 @@ def _new_state():
             RefreshStep("财报数据"), RefreshStep("业绩预告快报"),
             RefreshStep("行业与指数数据"), RefreshStep("研报元数据"),
             RefreshStep("研报PDF解析")]),
+        "all": RefreshGroup(),
     }
 
 
