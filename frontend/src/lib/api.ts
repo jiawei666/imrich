@@ -34,14 +34,28 @@ export const api = {
     }
     return () => es.close()
   },
-  refreshKline: async (reloadStockList = true) => {
-    const r = await fetch(`${BASE}/refresh/kline?reload_stock_list=${reloadStockList}`, { method: 'POST' })
-    if (!r.ok) throw new Error(`${r.status}`)
+  refreshKline: async () => {
+    const r = await fetch(`${BASE}/refresh/kline`, { method: 'POST' })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error(body.detail || `${r.status}`)
+    }
     return r.json()
   },
-  refreshFundamental: async () => {
-    const r = await fetch(`${BASE}/refresh/fundamental`, { method: 'POST' })
-    if (!r.ok) throw new Error(`${r.status}`)
+  refreshStockList: async () => {
+    const r = await fetch(`${BASE}/refresh/stock-list`, { method: 'POST' })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error(body.detail || `${r.status}`)
+    }
+    return r.json()
+  },
+  refreshAll: async () => {
+    const r = await fetch(`${BASE}/refresh/all`, { method: 'POST' })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error(body.detail || `${r.status}`)
+    }
     return r.json()
   },
   refreshFundamentalStep: async (step: string) => {
