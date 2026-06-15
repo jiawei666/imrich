@@ -128,7 +128,7 @@ function TaskCard({
   allRunning: boolean
   onRefresh: (key: string) => void
 }) {
-  const step = status ? config.step(status) : { status: 'idle' as const, error: null, progress: 0, done: 0, total: 0 }
+  const step = status ? config.step(status) : { label: config.label, status: 'idle' as const, error: null, progress: 0, done: 0, total: 0, elapsed: '00:00' }
   const running = step.status === 'running'
   const updatedAt = meta ? config.updatedAt(meta) : null
 

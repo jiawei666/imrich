@@ -169,6 +169,12 @@ export const REFRESH_STATUS: RefreshStatus = {
       { label: '研报PDF解析', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
     ],
   },
+  all: {
+    status: 'idle',
+    updatedAt: null,
+    error: null,
+    steps: [],
+  },
 }
 
 export const TECH_CANDIDATES: TechnicalCandidate[] = [

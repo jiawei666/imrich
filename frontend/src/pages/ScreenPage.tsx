@@ -8,7 +8,7 @@ import { TechnicalScreenView, type TechnicalScreenViewHandle } from '@/component
 import { PageHeader } from '@/components/layout/PageHeader'
 import { STOCK_DETAIL } from '@/data/mock'
 import { api } from '@/lib/api'
-import { STRATEGY_CATEGORY, type Candidate, type IndexInfo, type MetaResponse, type Preset, type StockDetail, type StrategyId } from '@/types'
+import { STRATEGY_CATEGORY, type Candidate, type IndexInfo, type Preset, type StockDetail, type StrategyId } from '@/types'
 
 export interface ScreenPageHandle {
   toggleFilter: () => void
