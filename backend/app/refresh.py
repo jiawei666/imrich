@@ -552,7 +552,7 @@ def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None,
         from app.data.fetch_research import parse_pdf_text
         research_parse_fn = parse_pdf_text
     if research_directory is None:
-        research_directory = Path("backend/data/research")
+        research_directory = Path("data/research")
     step = group.steps[4]
     if step.status == "running":
         return
