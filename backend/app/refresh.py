@@ -64,6 +64,7 @@ def _new_state():
             RefreshStep("财报数据"), RefreshStep("业绩预告快报"),
             RefreshStep("行业与指数数据"), RefreshStep("研报元数据"),
             RefreshStep("研报PDF解析")]),
+        "all": RefreshGroup(),
     }
 
 
@@ -91,91 +92,89 @@ def _fmt(seconds: float) -> str:
 _PERIOD_MODELS = {"week": KlineWeek, "month": KlineMonth, "quarter": KlineQuarter}
 
 
-def run_kline_refresh(
-    reload_stock_list: bool = True,
-    constituents_fn: Optional[Callable[[], list]] = None,
-    kline_fn: Optional[Callable[[str], pd.DataFrame]] = None,
-) -> None:
-    """任务组A：股票列表 diff + 日K全量重抓 + 周/月/季K重采样。
-
-    Args:
-        reload_stock_list: 是否重新加载股票列表。False 则跳过步骤1，直接用现有股票列表刷新K线。
-    """
+def run_stock_list_refresh(constituents_fn=None):
+    """独立执行步骤1：股票列表 diff（分页抓取 + 写库 + 退市软删除）。"""
     if constituents_fn is None:
         from app.data.fetch_kline import get_constituents
-        # 占位，等 step1 可用后再构建带回调的版本
         constituents_fn = "default"
+
+    group = STATE["kline"]
+    step = group.steps[0]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    started = time.time()
+
+    try:
+        if constituents_fn == "default":
+            from app.data.fetch_kline import get_constituents
+            def _on_page(current, total):
+                if total > 0:
+                    step.total = total
+                    step.done = current
+                    step.progress = int(current / total * 100)
+                    step.elapsed = _fmt(time.time() - started)
+            constituents_fn = lambda: get_constituents(DEFAULT_MIN_CAP, progress_callback=_on_page)
+
+        rows = constituents_fn()
+        step.total = step.done = len(rows)
+        step.progress = 100
+        step.elapsed = _fmt(time.time() - started)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with SessionLocal() as s:
+            current_codes = set()
+            for r in tqdm(rows, desc="股票列表写库"):
+                if _cancel_flag:
+                    step.status = "done"
+                    step.error = "服务关闭，任务中断"
+                    return
+                current_codes.add(r["code"])
+                obj = s.get(Stock, r["code"])
+                if obj is None:
+                    obj = Stock(code=r["code"], is_bj=r["code"].startswith("bj"))
+                    s.add(obj)
+                obj.name = r["name"]
+                obj.market_cap = r.get("market_cap")
+                obj.is_bj = r["code"].startswith("bj")
+                obj.delisted_at = None
+                obj.updated_at = now
+            for obj in s.query(Stock).all():
+                if obj.code not in current_codes and obj.delisted_at is None:
+                    obj.delisted_at = now
+            s.commit()
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
+
+
+def run_kline_data_refresh(kline_fn=None):
+    """独立执行步骤2：K线全量重抓 + 周/月/季K重采样。依赖步骤1完成（或已有股票数据）。"""
     if kline_fn is None:
         from app.data.fetch_kline import get_kline_ak_tx
         kline_fn = lambda code: get_kline_ak_tx(code, "", "")
 
     group = STATE["kline"]
-    group.status = "running"
-    started = time.time()
+    step = group.steps[1]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
 
     try:
-        # —— 步骤1：股票列表（可选跳过） ——
-        step1 = group.steps[0]
-        if constituents_fn == "default":
-            from app.data.fetch_kline import get_constituents
-            def _on_page(current, total):
-                if total > 0:
-                    step1.total = total
-                    step1.done = current
-                    step1.progress = int(current / total * 100)
-                    step1.elapsed = _fmt(time.time() - started)
-            constituents_fn = lambda: get_constituents(DEFAULT_MIN_CAP, progress_callback=_on_page)
-        if reload_stock_list:
-            rows = constituents_fn()
-            # 分页抓取阶段已由 progress_callback 更新进度；写入数据库极快，直接标记完成
-            step1.total = step1.done = len(rows)
-            step1.progress = 100
-            step1.elapsed = _fmt(time.time() - started)
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with SessionLocal() as s:
-                current_codes = set()
-                for r in tqdm(rows, desc="股票列表写库"):
-                    if _cancel_flag:
-                        group.status = "done"
-                        group.error = "服务关闭，任务中断"
-                        return
-                    current_codes.add(r["code"])
-                    obj = s.get(Stock, r["code"])
-                    if obj is None:
-                        obj = Stock(code=r["code"], is_bj=r["code"].startswith("bj"))
-                        s.add(obj)
-                    obj.name = r["name"]
-                    obj.market_cap = r.get("market_cap")
-                    obj.is_bj = r["code"].startswith("bj")
-                    obj.delisted_at = None
-                    obj.updated_at = now
-                # 退市软删除
-                for obj in s.query(Stock).all():
-                    if obj.code not in current_codes and obj.delisted_at is None:
-                        obj.delisted_at = now
-                s.commit()
-        else:
-            # 跳过股票列表刷新，从数据库读取现有股票
-            with SessionLocal() as s:
-                rows = [
-                    {"code": obj.code, "name": obj.name, "market_cap": obj.market_cap}
-                    for obj in s.query(Stock).filter(Stock.delisted_at.is_(None)).all()
-                ]
-            step1.total = step1.done = len(rows)
-            step1.progress = 100
-            step1.elapsed = "跳过"
+        with SessionLocal() as s:
+            active = [obj.code for obj in s.query(Stock).filter(Stock.delisted_at.is_(None)).all()]
 
-        # —— 步骤2：K线全量重抓 + 重采样 ——
-        step2 = group.steps[1]
-        step2.done = 0
-        step2.progress = 0
-        active = [r["code"] for r in rows]
-        step2.total = len(active)
+        step.total = len(active)
+        step.done = 0
+        step.progress = 0
         t0 = time.time()
         for i, code in enumerate(tqdm(active, desc="K线数据刷新（日+周+月+季）"), 1):
             if _cancel_flag:
-                group.status = "done"
-                group.error = "服务关闭，任务中断"
+                step.status = "done"
+                step.error = "服务关闭，任务中断"
                 return
             df = kline_fn(code)
             with SessionLocal() as s:
@@ -199,15 +198,18 @@ def run_kline_refresh(
                             for row in rs.itertuples(index=False)
                         ])
                 s.commit()
-            step2.done = i
-            step2.progress = int(i / step2.total * 100) if step2.total else 100
-            step2.elapsed = _fmt(time.time() - t0)
+            step.done = i
+            step.progress = int(i / step.total * 100) if step.total else 100
+            step.elapsed = _fmt(time.time() - t0)
 
-        group.status = "done"
-        group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        step.status = "done"
+        # 两步都完成才标记 kline 整体 done
+        if group.steps[0].status == "done":
+            group.status = "done"
+            group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     except Exception as e:
-        group.status = "error"
-        group.error = str(e)
+        step.status = "error"
+        step.error = str(e)
         raise
 
 
@@ -393,8 +395,16 @@ def _refresh_industry_index(
             for code in constituents:
                 stock = s.get(Stock, code)
                 if stock is None:
-                    stock = Stock(code=code, name="", is_st=False, is_bj=code.startswith("bj"))
-                    s.add(stock)
+                    try:
+                        stock = Stock(code=code, name="", is_st=False, is_bj=code.startswith("bj"))
+                        s.add(stock)
+                        s.flush()
+                    except Exception:
+                        # 并发场景下 run_stock_list_refresh 可能已插入同名股票
+                        s.rollback()
+                        stock = s.get(Stock, code)
+                        if stock is None:
+                            raise
                 stock.industry = industry["name"]
                 stock.parent_industry = industry.get("parent_name")
             s.commit()
@@ -572,7 +582,8 @@ def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None,
         raise
 
 
-def run_fundamental_refresh(
+def run_full_refresh(
+    stock_list_constituents_fn=None, kline_fn=None,
     financial_fn=None, forecast_fn=None, express_fn=None,
     industries_fn=None, industry_hist_fn=None, constituents_fn=None,
     industries_first_fn=None, index_constituents_fn=None,
@@ -580,39 +591,70 @@ def run_fundamental_refresh(
     research_download_fn=None, research_parse_fn=None,
     research_directory=None,
 ) -> None:
-    """一键全刷：步骤1/2/3并发，4→5串行。"""
-    include_research = any(
-        fn is not None
-        for fn in (research_meta_fn, research_download_fn, research_parse_fn)
-    )
-    group = STATE["fundamental"]
+    """一键更新全部：按依赖图分三阶段并发执行 7 个任务。
+
+    阶段1（并行）: ①股票列表 ③财报 ④预告快报 ⑤行业指数
+    阶段2（①完成后并行）: ②K线数据 ⑥研报元数据
+    阶段3（⑥完成后）: ⑦研报PDF解析
+    """
+    group = STATE["all"]
+    if group.status == "running":
+        return
     group.status = "running"
+    group.error = None
+    # 同步标记子组为 running
+    STATE["kline"].status = "running"
+    STATE["fundamental"].status = "running"
     try:
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futs = {
-                pool.submit(run_financial_refresh, financial_fn): 0,
-                pool.submit(run_forecasts_refresh, forecast_fn, express_fn): 1,
-                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn): 2,
-            }
+        with ThreadPoolExecutor(max_workers=7) as pool:
+            all_futures = []
+            # 阶段1：无依赖，并行提交
+            stock_list_fut = pool.submit(run_stock_list_refresh, stock_list_constituents_fn)
+            all_futures += [
+                stock_list_fut,
+                pool.submit(run_financial_refresh, financial_fn),
+                pool.submit(run_forecasts_refresh, forecast_fn, express_fn),
+                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn),
+            ]
+            # 阶段2：① 完成后提交
+            stock_list_fut.exception()  # 阻塞等待①（成功或失败都继续）
+            research_meta_fut = pool.submit(run_research_meta_refresh, research_meta_fn)
+            all_futures += [
+                pool.submit(run_kline_data_refresh, kline_fn),
+                research_meta_fut,
+            ]
+            # 阶段3：⑥ 完成后提交
+            research_meta_fut.exception()
+            all_futures.append(
+                pool.submit(run_research_pdfs_refresh, research_download_fn, research_parse_fn, research_directory)
+            )
             errors = []
-            for fut in as_completed(futs):
-                try:
-                    fut.result()
-                except Exception as exc:
-                    errors.append(exc)  # 错误已记录在 step.error 中
-            if errors:
-                raise errors[0]
-
-        if include_research:
-            run_research_meta_refresh(research_meta_fn)
-            run_research_pdfs_refresh(research_download_fn, research_parse_fn, research_directory)
-
+            for fut in as_completed(all_futures):
+                exc = fut.exception()
+                if exc is not None:
+                    errors.append(exc)
+        if errors:
+            raise errors[0]
         group.status = "done"
         group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 同步标记子组为 done（子任务各自管理 step，但 group 可能未更新）
+        now_str = group.updatedAt
+        fg = STATE["fundamental"]
+        if all(s.status == "done" for s in fg.steps):
+            fg.status = "done"
+            fg.updatedAt = now_str
+        kg = STATE["kline"]
+        if all(s.status == "done" for s in kg.steps):
+            kg.status = "done"
+            kg.updatedAt = now_str
     except Exception as e:
         group.status = "error"
         group.error = str(e)
+        # 同步标记 fundamental/kline 组为 error（子任务已设置 step.error，但 group 可能未更新）
+        for g in (STATE["fundamental"], STATE["kline"]):
+            if g.status == "running":
+                g.status = "error"
         raise
 
 

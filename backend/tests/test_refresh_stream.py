@@ -11,10 +11,13 @@ def test_get_status_snapshot(client):
     snapshot = refresh.get_status_snapshot()
     assert "kline" in snapshot
     assert "fundamental" in snapshot
+    assert "all" in snapshot
     assert snapshot["kline"]["status"] == "idle"
     assert isinstance(snapshot["kline"]["steps"], list)
     assert len(snapshot["kline"]["steps"]) == 2
     assert len(snapshot["fundamental"]["steps"]) == 5
+    assert len(snapshot["all"]["steps"]) == 0
+    assert snapshot["all"]["status"] == "idle"
 
 
 def test_get_status_snapshot_is_independent_copy(client):

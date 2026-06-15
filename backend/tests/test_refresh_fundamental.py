@@ -10,11 +10,20 @@ from app.db import SessionLocal, init_db
 from app.models import FinancialReport, Forecast, Industry, IndexConstituent, IndustryIndex, ResearchReport, Stock
 
 
-def test_run_fundamental_refresh_marks_done(db_path):
+def _fake_kline(code):
+    """用于 run_full_refresh 测试的假 K 线数据，避免联网。"""
+    return pd.DataFrame()
+
+
+def test_run_full_refresh_marks_done(db_path):
     init_db()
     refresh.reset_state()
 
-    refresh.run_fundamental_refresh(
+    refresh.run_full_refresh(
+        stock_list_constituents_fn=lambda: [
+            {"code": "sz000001", "name": "平安银行", "market_cap": 5000.0},
+        ],
+        kline_fn=_fake_kline,
         financial_fn=lambda rd: [
             {
                 "code": "sz000001",
@@ -65,6 +74,11 @@ def test_run_fundamental_refresh_marks_done(db_path):
     assert group.updatedAt is not None
     assert all(step.progress == 100 for step in group.steps[:3])
 
+    # run_full_refresh 额外维护 STATE["all"]
+    all_group = refresh.STATE["all"]
+    assert all_group.status == "done"
+    assert all_group.updatedAt is not None
+
     with SessionLocal() as s:
         assert s.query(FinancialReport).count() == 1
         assert s.query(Forecast).count() == 2
@@ -75,17 +89,17 @@ def test_run_fundamental_refresh_marks_done(db_path):
         assert stock.parent_industry == "金融"
 
 
-def test_run_fundamental_refresh_marks_error_on_exception(db_path):
+def test_run_full_refresh_marks_error_on_exception(db_path):
     init_db()
     refresh.reset_state()
 
     def boom(rd):
         raise RuntimeError("boom")
 
-    import pytest
-
     with pytest.raises(RuntimeError):
-        refresh.run_fundamental_refresh(
+        refresh.run_full_refresh(
+            stock_list_constituents_fn=lambda: [],
+            kline_fn=_fake_kline,
             financial_fn=boom,
             forecast_fn=lambda rd: [],
             express_fn=lambda rd: [],
@@ -96,6 +110,7 @@ def test_run_fundamental_refresh_marks_error_on_exception(db_path):
             index_constituents_fn=lambda code: [],
         )
     assert refresh.STATE["fundamental"].status == "error"
+    assert refresh.STATE["all"].status == "error"
 
 
 def test_refresh_industry_index_persists_completed_and_skips_failed(db_path):
@@ -612,7 +627,7 @@ def test_refresh_research_pdfs_downloads_concurrently(db_path, tmp_path):
             assert s.query(ResearchReport).filter_by(report_id=f"R{i}").one().stage == "parsed"
 
 
-def test_run_fundamental_refresh_can_include_research_steps(db_path, tmp_path):
+def test_run_full_refresh_can_include_research_steps(db_path, tmp_path):
     init_db()
     refresh.reset_state()
 
@@ -623,7 +638,11 @@ def test_run_fundamental_refresh_can_include_research_steps(db_path, tmp_path):
     target = tmp_path / "r1.pdf"
     target.write_bytes(b"fake")
 
-    refresh.run_fundamental_refresh(
+    refresh.run_full_refresh(
+        stock_list_constituents_fn=lambda: [
+            {"code": "sz000001", "name": "平安银行", "market_cap": 5000.0},
+        ],
+        kline_fn=_fake_kline,
         financial_fn=lambda rd: [
             {
                 "code": "sz000001",
@@ -662,6 +681,7 @@ def test_run_fundamental_refresh_can_include_research_steps(db_path, tmp_path):
     group = refresh.STATE["fundamental"]
     assert group.steps[3].progress == 100
     assert group.steps[4].progress == 100
+    assert refresh.STATE["all"].status == "done"
 
 
 def test_refresh_index_constituents_writes_table(db_path):
@@ -704,11 +724,13 @@ def test_refresh_index_constituents_replaces_existing_and_skips_failed(db_path):
         assert s.query(IndexConstituent).filter_by(index_code="000905").count() == 0
 
 
-def test_run_fundamental_refresh_populates_index_constituents(db_path):
+def test_run_full_refresh_populates_index_constituents(db_path):
     init_db()
     refresh.reset_state()
 
-    refresh.run_fundamental_refresh(
+    refresh.run_full_refresh(
+        stock_list_constituents_fn=lambda: [],
+        kline_fn=_fake_kline,
         financial_fn=lambda rd: [],
         forecast_fn=lambda rd: [],
         express_fn=lambda rd: [],
