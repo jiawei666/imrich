@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Check, Loader2, RotateCw } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  AlertCircle,
+  CandlestickChart,
+  Check,
+  Database,
+  FileDown,
+  FileSearch,
+  FileText,
+  Loader2,
+  Megaphone,
+  PieChart,
+  RotateCw,
+  type LucideIcon,
+} from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ProgressBar } from '@/components/ui/progress'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -12,6 +25,8 @@ import type { MetaResponse, RefreshStatus, RefreshStep } from '@/types'
 interface RefreshTaskConfig {
   key: string
   label: string
+  description: string
+  icon: LucideIcon
   step: (status: RefreshStatus) => RefreshStep
   updatedAt: (meta: MetaResponse) => string | null
   trigger: () => Promise<unknown>
@@ -22,6 +37,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'stock-list',
     label: '股票列表',
+    description: '全市场股票名称、行业分类与上市状态',
+    icon: Database,
     step: (s) => s.kline.steps[0],
     updatedAt: (m) => m.stockList.updatedAt,
     trigger: () => api.refreshStockList(),
@@ -29,6 +46,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'kline-data',
     label: 'K线数据（日+周+月+季）',
+    description: '日 / 周 / 月 / 季 K 线，技术面选股的基础行情数据',
+    icon: CandlestickChart,
     step: (s) => s.kline.steps[1],
     updatedAt: (m) => m.klineDay.updatedAt,
     trigger: () => api.refreshKline(),
@@ -37,6 +56,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'financial',
     label: '财报数据',
+    description: '最新一期财务报表，含营收、净利润等核心指标',
+    icon: FileText,
     step: (s) => s.fundamental.steps[0],
     updatedAt: (m) => m.financialReports.updatedAt,
     trigger: () => api.refreshFundamentalStep('financial'),
@@ -44,6 +65,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'forecasts',
     label: '业绩预告快报',
+    description: '上市公司业绩预告与业绩快报',
+    icon: Megaphone,
     step: (s) => s.fundamental.steps[1],
     updatedAt: (m) => m.forecasts.updatedAt,
     trigger: () => api.refreshFundamentalStep('forecasts'),
@@ -51,6 +74,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'industry',
     label: '行业与指数数据',
+    description: '申万行业分类及行业指数走势',
+    icon: PieChart,
     step: (s) => s.fundamental.steps[2],
     updatedAt: (m) => m.industryIndex.updatedAt,
     trigger: () => api.refreshFundamentalStep('industry'),
@@ -58,6 +83,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'research-meta',
     label: '研报元数据',
+    description: '个股研报标题、机构、发布日期等元信息',
+    icon: FileSearch,
     step: (s) => s.fundamental.steps[3],
     updatedAt: (m) => m.researchReports.stage1UpdatedAt,
     trigger: () => api.refreshFundamentalStep('research-meta'),
@@ -66,6 +93,8 @@ const TASKS: RefreshTaskConfig[] = [
   {
     key: 'research-pdfs',
     label: '研报PDF解析',
+    description: '下载并解析候选股研报全文（依赖研报元数据）',
+    icon: FileDown,
     step: (s) => s.fundamental.steps[4],
     updatedAt: (m) => m.researchReports.stage2UpdatedAt,
     trigger: () => api.refreshFundamentalStep('research-pdfs'),
@@ -73,10 +102,13 @@ const TASKS: RefreshTaskConfig[] = [
   },
 ]
 
-const STAGES = [
-  { title: '阶段1 · 无依赖，可并行', keys: ['stock-list', 'financial', 'forecasts', 'industry'] },
-  { title: '阶段2 · 依赖股票列表完成', keys: ['kline-data', 'research-meta'] },
-  { title: '阶段3 · 依赖研报元数据完成', keys: ['research-pdfs'] },
+const DOMAINS: { title: string; keys: string[]; gridClass: string }[] = [
+  { title: '技术面数据', keys: ['stock-list', 'kline-data'], gridClass: 'grid-cols-1 lg:grid-cols-2' },
+  {
+    title: '基本面数据',
+    keys: ['financial', 'forecasts', 'industry', 'research-meta', 'research-pdfs'],
+    gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+  },
 ]
 
 /* ─── 辅助 ─── */
@@ -131,6 +163,7 @@ function TaskCard({
   const step = status ? config.step(status) : { label: config.label, status: 'idle' as const, error: null, progress: 0, done: 0, total: 0, elapsed: '00:00' }
   const running = step.status === 'running'
   const updatedAt = meta ? config.updatedAt(meta) : null
+  const Icon = config.icon
 
   // 依赖检查
   let blockedDep: string | null = null
@@ -154,13 +187,25 @@ function TaskCard({
         : `刷新${config.label}`
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle className="text-[13px]">{config.label}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col justify-between gap-3">
+    <Card className="flex flex-col p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-paper-2 text-ink-soft">
+          <Icon className="size-[18px]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[13px] font-semibold tracking-tight text-ink">{config.label}</h3>
+          <p className="mt-0.5 text-[12px] leading-snug text-ink-faint">{config.description}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-1 flex-col justify-end gap-3">
         <div className="flex items-center justify-between">
-          <StatusBadge step={step} />
+          <div className="flex items-center gap-2">
+            <StatusBadge step={step} />
+            {step.done > 0 && (
+              <span className="text-[11px] text-ink-faint tnum">· {step.done.toLocaleString()} 条</span>
+            )}
+          </div>
           {updatedAt && <span className="text-[11px] text-ink-faint tnum">{updatedAt}</span>}
         </div>
         {running && <ProgressBar value={step.progress} className="h-1.5" />}
@@ -175,7 +220,7 @@ function TaskCard({
           <RotateCw className={`size-3.5 ${running ? 'animate-spin' : ''}`} />
           刷新
         </Button>
-      </CardContent>
+      </div>
     </Card>
   )
 }
@@ -221,6 +266,7 @@ export function HomePage() {
   }, [])
 
   const allRunning = status?.all.status === 'running'
+  const stockCount = status?.kline.steps[0]?.done ?? 0
 
   const handleRefresh = async (key: string) => {
     const config = TASKS.find((t) => t.key === key)
@@ -242,47 +288,54 @@ export function HomePage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <PageHeader title="数据更新" />
+      <PageHeader />
       <main className="flex-1 overflow-y-auto p-6">
-        {/* 摘要卡 */}
-        <Card className="mb-6">
-          <CardContent className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-3">
-              {allRunning ? (
-                <>
-                  <Loader2 className="size-5 animate-spin text-brand" />
-                  <span className="text-sm text-brand">全部更新中...</span>
-                </>
-              ) : status?.all.status === 'error' ? (
-                <>
-                  <AlertCircle className="size-5 text-down" />
-                  <span className="text-sm text-down">{status.all.error ?? '更新失败'}</span>
-                </>
-              ) : (
-                <span className="text-sm text-ink-soft">
-                  {status?.all.updatedAt ? `上次一键更新于 ${status.all.updatedAt}` : '暂无一键更新记录'}
-                </span>
-              )}
+        {/* 总览 */}
+        <Card className="mb-6 bg-brand-soft">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 py-6">
+            <div className="flex flex-wrap items-center gap-6">
+              <div>
+                <h2 className="text-base font-semibold text-ink">数据更新中心</h2>
+                {allRunning ? (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-brand">
+                    <Loader2 className="size-4 animate-spin" />
+                    全部更新中...
+                  </p>
+                ) : status?.all.status === 'error' ? (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-down">
+                    <AlertCircle className="size-4" />
+                    {status.all.error ?? '更新失败'}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-ink-soft">
+                    {status?.all.updatedAt ? `上次一键更新于 ${status.all.updatedAt}` : '暂无一键更新记录'}
+                  </p>
+                )}
+              </div>
+              <div className="border-l border-line pl-6">
+                <div className="text-2xl font-bold text-ink tnum">{stockCount > 0 ? stockCount.toLocaleString() : '--'}</div>
+                <div className="text-[12px] text-ink-faint">在库股票数</div>
+              </div>
             </div>
             <Button
               variant="primary"
-              size="sm"
+              size="lg"
               disabled={allRunning}
               onClick={handleRefreshAll}
               title={allRunning ? '全部更新中，请稍候' : '一键更新全部'}
             >
-              <RotateCw className={`size-3.5 ${allRunning ? 'animate-spin' : ''}`} />
+              <RotateCw className={`size-4 ${allRunning ? 'animate-spin' : ''}`} />
               一键更新全部
             </Button>
           </CardContent>
         </Card>
 
-        {/* 阶段列表 */}
-        {STAGES.map((stage) => (
-          <div key={stage.title} className="mb-5">
-            <h2 className="mb-3 text-[12px] font-medium text-ink-soft">{stage.title}</h2>
-            <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-              {TASKS.filter((t) => stage.keys.includes(t.key)).map((config) => (
+        {/* 数据分组 */}
+        {DOMAINS.map((domain) => (
+          <div key={domain.title} className="mb-5">
+            <h2 className="mb-3 text-[12px] font-medium text-ink-soft">{domain.title}</h2>
+            <div className={`grid gap-4 ${domain.gridClass}`}>
+              {TASKS.filter((t) => domain.keys.includes(t.key)).map((config) => (
                 <TaskCard
                   key={config.key}
                   config={config}

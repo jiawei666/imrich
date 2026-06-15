@@ -1,7 +1,7 @@
 import sqlite3
 
 from app.db import SessionLocal, init_db
-from app.models import Forecast
+from app.models import Forecast, Stock
 
 
 OLD_FORECASTS_SCHEMA = """
@@ -70,3 +70,43 @@ def test_migrate_forecasts_constraint_adds_indicator(db_path):
             .all()
         )
         assert {r.indicator for r in rows} == {"净利润", "扣除非经常性损益的净利润"}
+
+
+OLD_STOCKS_SCHEMA = """
+CREATE TABLE stocks (
+    code VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    market_cap FLOAT,
+    listed_at VARCHAR,
+    industry VARCHAR,
+    is_st BOOLEAN NOT NULL,
+    is_bj BOOLEAN NOT NULL,
+    delisted_at VARCHAR,
+    updated_at VARCHAR,
+    PRIMARY KEY (code)
+)
+"""
+
+
+def test_migrate_stocks_adds_parent_industry(db_path):
+    """旧库 stocks 表缺少 parent_industry 列，init_db() 应自动补全该列。"""
+    conn = sqlite3.connect(db_path)
+    conn.execute(OLD_STOCKS_SCHEMA)
+    conn.execute(
+        "INSERT INTO stocks (code, name, is_st, is_bj) VALUES ('sz000001', '平安银行', 0, 0)"
+    )
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    with SessionLocal() as s:
+        stock = s.get(Stock, "sz000001")
+        assert stock is not None
+        assert stock.parent_industry is None
+
+        stock.parent_industry = "金融"
+        s.commit()
+
+    with SessionLocal() as s:
+        assert s.get(Stock, "sz000001").parent_industry == "金融"

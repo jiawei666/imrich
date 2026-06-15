@@ -41,6 +41,20 @@ def init_db() -> None:
     import app.models  # noqa: F401  确保模型已注册
     Base.metadata.create_all(engine)
     _migrate_forecasts_constraint(engine)
+    _migrate_stocks_parent_industry(engine)
+
+
+def _migrate_stocks_parent_industry(engine):
+    """旧库 stocks 表缺少 parent_industry 列（模型新增字段后未随 create_all 补全），
+    SQLite 支持 ALTER TABLE ADD COLUMN，直接补列即可。"""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(stocks)"))
+        columns = {row[1] for row in result.fetchall()}
+        if "parent_industry" in columns:
+            return
+        conn.execute(text("ALTER TABLE stocks ADD COLUMN parent_industry VARCHAR"))
+        conn.commit()
 
 
 def _migrate_forecasts_constraint(engine):

@@ -139,7 +139,7 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
 
     return (
       <div className="flex min-w-0 flex-1 flex-col">
-        <PageHeader title={activePreset?.name ?? ''} />
+        <PageHeader />
         {isTechnical ? (
           <TechnicalScreenView
             ref={technicalRef}
