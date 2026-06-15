@@ -24,6 +24,13 @@ def get_meta() -> dict:
         forecast_updated = s.query(Forecast.updated_at).order_by(Forecast.updated_at.desc()).limit(1).scalar()
         industry_date = s.query(IndustryIndex.date).order_by(IndustryIndex.date.desc()).limit(1).scalar()
         research_updated = s.query(ResearchReport.updated_at).order_by(ResearchReport.updated_at.desc()).limit(1).scalar()
+        research_stage2_updated = (
+            s.query(ResearchReport.updated_at)
+            .filter(ResearchReport.stage == "parsed")
+            .order_by(ResearchReport.updated_at.desc())
+            .limit(1)
+            .scalar()
+        )
         parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
     return {
         "stockList": {"updatedAt": stock_updated},
@@ -34,5 +41,5 @@ def get_meta() -> dict:
         },
         "forecasts": {"updatedAt": forecast_updated},
         "industryIndex": {"updatedAt": industry_date},
-        "researchReports": {"stage1UpdatedAt": research_updated, "stage2CandidateCount": parsed_count},
+        "researchReports": {"stage1UpdatedAt": research_updated, "stage2UpdatedAt": research_stage2_updated, "stage2CandidateCount": parsed_count},
     }
