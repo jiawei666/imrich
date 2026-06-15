@@ -52,20 +52,32 @@ def presets():
 
 
 @app.post("/refresh/kline", status_code=202)
-async def refresh_kline(reload_stock_list: bool = Query(True)):
-    t = asyncio.create_task(
-        asyncio.to_thread(refresh.run_kline_refresh, reload_stock_list=reload_stock_list)
-    )
+async def refresh_kline():
+    if refresh.STATE["all"].status == "running":
+        raise HTTPException(status_code=409, detail="全部更新中，请稍候")
+    t = asyncio.create_task(asyncio.to_thread(refresh.run_kline_data_refresh))
     _refresh_tasks.add(t)
     t.add_done_callback(_refresh_tasks.discard)
     return {"status": "accepted"}
 
 
-@app.post("/refresh/fundamental", status_code=202)
-async def refresh_fundamental():
+@app.post("/refresh/stock-list", status_code=202)
+async def refresh_stock_list():
+    if refresh.STATE["all"].status == "running":
+        raise HTTPException(status_code=409, detail="全部更新中，请稍候")
+    t = asyncio.create_task(asyncio.to_thread(refresh.run_stock_list_refresh))
+    _refresh_tasks.add(t)
+    t.add_done_callback(_refresh_tasks.discard)
+    return {"status": "accepted"}
+
+
+@app.post("/refresh/all", status_code=202)
+async def refresh_all():
+    if refresh.STATE["all"].status == "running":
+        raise HTTPException(status_code=409, detail="全部更新中，请稍候")
     t = asyncio.create_task(
         asyncio.to_thread(
-            refresh.run_fundamental_refresh,
+            refresh.run_full_refresh,
             research_meta_fn=fetch_research_metadata,
             research_download_fn=download_pdf,
             research_parse_fn=parse_pdf_text,
@@ -89,6 +101,9 @@ FUNDAMENTAL_STEP_MAP = {
 @app.post("/refresh/fundamental/{step}", status_code=202)
 async def refresh_fundamental_step(step: str):
     """单步刷新基本面数据。"""
+    # 全部更新中的守卫
+    if refresh.STATE["all"].status == "running":
+        raise HTTPException(status_code=409, detail="全部更新中，请稍候")
     # 依赖检查（先从数据库回填 STATE，避免进程重启后误判）
     if step in FUNDAMENTAL_STEP_DEPS:
         refresh._backfill_state_from_db()
