@@ -147,17 +147,9 @@ export interface RefreshGroup {
 export interface RefreshStatus {
   kline: RefreshGroup
   fundamental: RefreshGroup
+  all: RefreshGroup
 }
 
-/** TopBar 实时动态：后台任务（如技术面筛选）的进行中/完成状态 */
-export type ActivityStatus = 'running' | 'done' | 'error'
-
-export interface ActivityItem {
-  id: string
-  label: string
-  status: ActivityStatus
-  detail?: string
-}
 
 export interface StockKlineResponse {
   data: Kline[]
@@ -171,7 +163,7 @@ export interface MetaResponse {
   financialReports: { updatedAt: string | null; reportPeriod: string | null }
   forecasts: { updatedAt: string | null }
   industryIndex: { updatedAt: string | null }
-  researchReports: { stage1UpdatedAt: string | null; stage2CandidateCount: number }
+  researchReports: { stage1UpdatedAt: string | null; stage2UpdatedAt: string | null; stage2CandidateCount: number }
 }
 
 export interface StockListItem {
