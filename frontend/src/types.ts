@@ -158,12 +158,17 @@ export interface StockKlineResponse {
 }
 
 export interface MetaResponse {
-  stockList: { updatedAt: string | null }
+  stockList: { updatedAt: string | null; count: number }
   klineDay: { updatedAt: string | null }
   financialReports: { updatedAt: string | null; reportPeriod: string | null }
   forecasts: { updatedAt: string | null }
   industryIndex: { updatedAt: string | null }
-  researchReports: { stage1UpdatedAt: string | null; stage2UpdatedAt: string | null; stage2CandidateCount: number }
+  researchReports: {
+    stage1UpdatedAt: string | null
+    stage2UpdatedAt: string | null
+    stage2CandidateCount: number
+    count: number
+  }
 }
 
 export interface StockListItem {

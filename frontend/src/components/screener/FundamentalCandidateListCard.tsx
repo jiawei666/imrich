@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingOverlay } from '@/components/ui/loading-overlay'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SignalBadgeList } from './SignalBadge'
 import { cn } from '@/lib/utils'
@@ -96,7 +97,7 @@ export function FundamentalCandidateListCard({
 
   return (
     <Card className="relative flex max-h-full flex-col">
-      <LoadingOverlay show={!!loading} />
+      <LoadingOverlay show={!!loading && items.length > 0} />
       <CardHeader className="shrink-0 flex-wrap gap-y-2 pb-2">
         <div className="flex items-baseline gap-3">
           <CardTitle>候选结果</CardTitle>
@@ -136,7 +137,26 @@ export function FundamentalCandidateListCard({
       </CardHeader>
 
       <CardContent className="flex-1 overflow-y-auto pt-2">
-        {items.length === 0 && updatedAt === null ? (
+        {loading && items.length === 0 ? (
+          <table className="w-full border-collapse">
+            <tbody>
+              {Array.from({ length: 10 }).map((_, i) => (
+                <tr key={i} className="border-t border-line-soft first:border-t-0">
+                  <td className="px-2 py-2.5">
+                    <Skeleton className="mb-1.5 h-3.5 w-20" />
+                    <Skeleton className="h-2.5 w-14" />
+                  </td>
+                  <td className="px-2 py-2.5"><Skeleton className="h-3.5 w-12" /></td>
+                  <td className="px-2 py-2.5"><Skeleton className="ml-auto h-4 w-10" /></td>
+                  <td className="px-2 py-2.5"><Skeleton className="h-5 w-20 rounded-full" /></td>
+                  <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
+                  <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
+                  {showDrawdown && <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : items.length === 0 && updatedAt === null ? (
           <div className="p-8 text-center text-sm text-ink-faint">
             尚未运行筛选，请点击左侧筛选后运行
           </div>

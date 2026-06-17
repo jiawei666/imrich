@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Loader2, RotateCw } from 'lucide-react'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { ProgressBar } from '@/components/ui/progress'
-import { PageHeader } from '@/components/layout/PageHeader'
+import { AlertCircle, RotateCw } from 'lucide-react'
 import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import type { MetaResponse, RefreshStatus } from '@/types'
 import {
   TASKS,
-  computeOverallProgress,
-  estimateEta,
+  latestMetaUpdateFull,
+  nodeState,
+  type NodeState,
 } from '@/components/home/refreshStatus'
-import { RefreshFlowCurve } from '@/components/home/RefreshFlowCurve'
+import { StatCard } from '@/components/home/StatCard'
+import { TaskList } from '@/components/home/TaskList'
 
 /* ─── 主组件 ─── */
 
@@ -53,10 +52,18 @@ export function HomePage() {
     return close
   }, [])
 
-  const allRunning = status?.all.status === 'running'
+  const loading = status === undefined
+  const allRunning = status?.all?.status === 'running'
+  const errorMsg = status?.all?.status === 'error' ? status?.all?.error ?? '更新失败' : null
 
-  const { doneCount, overallPct } = computeOverallProgress(status)
-  const eta = estimateEta(status)
+  const states: NodeState[] = TASKS.map((t) => (status ? nodeState(t.step(status)) : 'waiting'))
+  const total = TASKS.length
+  const doneCount = states.filter((s) => s === 'done').length
+  const pendingCount = total - doneCount
+  const donePct = total ? Math.round((doneCount / total) * 100) : 0
+  const pendingPct = total ? Math.round((pendingCount / total) * 100) : 0
+
+  const lastUpdate = latestMetaUpdateFull(meta)
 
   const handleRefresh = async (key: string) => {
     const config = TASKS.find((t) => t.key === key)
@@ -78,67 +85,78 @@ export function HomePage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <PageHeader />
-      <main className="flex-1 overflow-y-auto p-6">
-        {/* 标题行 */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-ink">数据工厂</h1>
-            <p className="mt-1 text-[13px] text-ink-faint">
-              实时掌握数据更新进度，确保选股引擎高效运行
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={allRunning}
-            onClick={handleRefreshAll}
-            title={allRunning ? '全部更新中，请稍候' : '一键更新全部'}
-          >
-            <RotateCw className={`size-4 ${allRunning ? 'animate-spin' : ''}`} />
-            一键更新全部
-          </Button>
-        </div>
-
-        {/* 整体进度卡片 */}
-        <Card className="p-6">
-          <div className="flex items-end justify-between gap-4">
+      <main className="flex-1 overflow-y-auto px-8 py-7">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6">
+          {/* 头部 */}
+          <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="text-[12px] font-medium text-ink-soft">整体进度</div>
-              <div className="mt-1 flex items-baseline gap-3">
-                <span className="text-3xl font-bold tnum text-brand">{overallPct}%</span>
-                <span className="text-[13px] text-ink-faint tnum">{doneCount}/{TASKS.length} 完成</span>
-              </div>
+              <h1 className="text-[22px] font-bold tracking-tight text-ink">数据更新中心</h1>
+              <p className="mt-1 text-[13px] text-ink-faint">
+                实时掌握数据更新状态，确保投资决策基于最新数据
+              </p>
             </div>
-            <div className="text-right">
-              <div className="text-[12px] font-medium text-ink-soft">预计完成时间</div>
-              {status?.all.status === 'error' ? (
-                <div className="mt-1 flex items-center justify-end gap-1.5 text-[13px] text-down">
-                  <AlertCircle className="size-4" />
-                  {status.all.error ?? '更新失败'}
-                </div>
-              ) : allRunning ? (
-                <div className="mt-1 flex items-center justify-end gap-1.5 text-lg font-semibold tnum text-ink">
-                  <Loader2 className="size-4 animate-spin text-brand" />
-                  {eta}
-                </div>
+            <div className="flex items-center gap-3">
+              {errorMsg ? (
+                <span className="flex items-center gap-1.5 text-[12px] text-brand">
+                  <AlertCircle className="size-3.5" />
+                  {errorMsg}
+                </span>
               ) : (
-                <div className="mt-1 text-lg font-semibold tnum text-ink">{eta}</div>
+                <span className="text-[12px] text-ink-faint">
+                  最后更新：<span className="tnum">{lastUpdate ?? '—'}</span>
+                </span>
               )}
+              <button
+                type="button"
+                onClick={handleRefreshAll}
+                disabled={loading || allRunning}
+                title={allRunning ? '全部更新中，请稍候' : '一键更新全部'}
+                className="flex size-9 items-center justify-center rounded-lg border border-line bg-paper text-ink-soft transition-colors hover:bg-paper-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCw className={cn('size-4', allRunning && 'animate-spin text-brand')} />
+              </button>
             </div>
-          </div>
+          </header>
 
-          <ProgressBar value={overallPct} className="mt-4 h-2.5" />
-
-          <div className="mt-10">
-            <RefreshFlowCurve
-              status={status}
-              meta={meta}
-              allRunning={allRunning}
-              onRefresh={handleRefresh}
+          {/* 统计卡 */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <StatCard
+              label="当日更新进度"
+              value={`${doneCount} / ${total}`}
+              pct={donePct}
+              tone="brand"
+              loading={loading}
+            />
+            <StatCard
+              label="已完成"
+              value={String(doneCount)}
+              pct={doneCount > 0 ? 100 : 0}
+              tone="brand"
+              loading={loading}
+            />
+            <StatCard
+              label="待执行"
+              value={String(pendingCount)}
+              pct={pendingPct}
+              tone="brand"
+              loading={loading}
             />
           </div>
-        </Card>
+
+          {/* 任务列表 */}
+          <TaskList
+            status={status}
+            meta={meta}
+            allRunning={!!allRunning}
+            onRefresh={handleRefresh}
+          />
+
+          {/* 页脚 */}
+          <footer className="pt-1 pb-2 text-center text-[11px] leading-relaxed text-ink-faint">
+            <p>数据来源：同花顺 · 东方财富 · 申万行业</p>
+            <p>免责声明：数据仅供参考，不构成投资建议</p>
+          </footer>
+        </div>
       </main>
     </div>
   )

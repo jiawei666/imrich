@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactElement } from 'react'
 import { ArrowUpDown, ArrowUp, ArrowDown, Loader2, PackageOpen, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingOverlay } from '@/components/ui/loading-overlay'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
@@ -251,9 +252,20 @@ export function StockListCard({
           className="max-h-[calc(100vh-220px)] overflow-y-auto overflow-x-auto rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
         >
           {loading && data.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-sm text-ink-faint">
-              加载中...
-            </div>
+            <table className="w-full border-collapse">
+              <tbody>
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <tr key={i} className="border-t border-line-soft first:border-t-0">
+                    <td className="px-2 py-2.5"><Skeleton className="h-3.5 w-16" /></td>
+                    <td className="px-2 py-2.5"><Skeleton className="h-3.5 w-20" /></td>
+                    <td className="px-2 py-2.5"><Skeleton className="h-3.5 w-14" /></td>
+                    <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-16" /></td>
+                    <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
+                    <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : error ? (
             <div className="flex flex-col items-center gap-2 py-10">
               <span className="text-sm text-red-500">{error}</span>

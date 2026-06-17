@@ -192,3 +192,32 @@ class ScreenSnapshot(Base):
         UniqueConstraint("preset_id", "data_date", name="uq_screen_snapshot"),
         Index("ix_screen_snapshot_preset_date", "preset_id", "data_date"),
     )
+
+
+class RefreshRun(Base):
+    """刷新任务组的持久化状态，供进程重启后恢复进度与判定中断。"""
+
+    __tablename__ = "refresh_runs"
+
+    group_key: Mapped[str] = mapped_column(String, primary_key=True)  # kline|fundamental|all
+    status: Mapped[str] = mapped_column(String, default="idle")
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    instance_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 写入它时的进程世代 token
+    heartbeat_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 最近一次真实进度推进的 epoch 秒
+
+
+class RefreshStepState(Base):
+    """刷新任务组内单个步骤的持久化进度。"""
+
+    __tablename__ = "refresh_steps"
+
+    group_key: Mapped[str] = mapped_column(String, primary_key=True)
+    idx: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="idle")
+    error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    elapsed: Mapped[str] = mapped_column(String, default="00:00")
+    progress: Mapped[int] = mapped_column(Integer, default=0)

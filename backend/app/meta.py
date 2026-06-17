@@ -32,8 +32,10 @@ def get_meta() -> dict:
             .scalar()
         )
         parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
+        stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
+        research_count = s.query(ResearchReport).count()
     return {
-        "stockList": {"updatedAt": stock_updated},
+        "stockList": {"updatedAt": stock_updated, "count": stock_count},
         "klineDay": {"updatedAt": kline_date},
         "financialReports": {
             "updatedAt": financial.updated_at if financial else None,
@@ -41,5 +43,5 @@ def get_meta() -> dict:
         },
         "forecasts": {"updatedAt": forecast_updated},
         "industryIndex": {"updatedAt": industry_date},
-        "researchReports": {"stage1UpdatedAt": research_updated, "stage2UpdatedAt": research_stage2_updated, "stage2CandidateCount": parsed_count},
+        "researchReports": {"stage1UpdatedAt": research_updated, "stage2UpdatedAt": research_stage2_updated, "stage2CandidateCount": parsed_count, "count": research_count},
     }

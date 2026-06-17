@@ -13,7 +13,30 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import type { MetaResponse, RefreshStatus, RefreshStep } from '@/types'
+
+/** 取 meta 中所有数据源 updatedAt 的最新原值（含时分秒），全为空则 null */
+export function latestMetaUpdateFull(meta: MetaResponse | undefined): string | null {
+  if (!meta) return null
+  const all = [
+    meta.stockList.updatedAt,
+    meta.klineDay.updatedAt,
+    meta.financialReports.updatedAt,
+    meta.forecasts.updatedAt,
+    meta.industryIndex.updatedAt,
+    meta.researchReports.stage1UpdatedAt,
+    meta.researchReports.stage2UpdatedAt,
+  ].filter((x): x is string => !!x)
+  if (all.length === 0) return null
+  // 时间串均为年份在前（"YYYY-MM-DD" 或 "YYYY-MM-DD HH:MM:SS"），字典序即时间序
+  return all.reduce((a, b) => (a > b ? a : b))
+}
+
+/** 取 meta 中所有数据源 updatedAt 的最新值，返回 "YYYY-MM-DD"，全为空则 null */
+export function latestMetaUpdate(meta: MetaResponse | undefined): string | null {
+  return latestMetaUpdateFull(meta)?.slice(0, 10) ?? null
+}
 
 /* ─── 任务配置 ─── */
 
@@ -208,4 +231,30 @@ export function StatusBadge({ step }: { step: RefreshStep }) {
     )
   }
   return <span className="text-[12px] text-ink-faint">待执行</span>
+}
+
+/* ─── 状态药丸（详情卡片标题区）─── */
+
+const PILL_TEXT: Record<NodeState, string> = {
+  done: '已完成',
+  running: '运行中',
+  error: '失败',
+  waiting: '待执行',
+}
+
+const PILL_CLASS: Record<NodeState, string> = {
+  done: 'bg-down/10 text-down',
+  running: 'bg-brand-soft text-brand',
+  error: 'bg-brand-soft text-brand',
+  waiting: 'bg-line-soft text-ink-faint',
+}
+
+export function StatusPill({ step }: { step: RefreshStep }) {
+  const state = nodeState(step)
+  const text = state === 'running' ? `运行中 ${step.progress}%` : PILL_TEXT[state]
+  return (
+    <span className={cn('shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-bold', PILL_CLASS[state])}>
+      {text}
+    </span>
+  )
 }

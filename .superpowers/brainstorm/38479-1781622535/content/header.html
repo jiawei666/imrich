@@ -1,0 +1,77 @@
+<h2>顶部布局三方向（真实配色 mockup）</h2>
+<p class="subtitle">下方每块是首页顶部区域的实际渲染示意（标题 + 整体进度 + 一键更新）。点一块选中你偏好的方向，也可以告诉我细节怎么调。</p>
+
+<style>
+  .mk { background:#f6efdc; border-radius:14px; padding:22px; cursor:pointer; border:2px solid transparent; transition:border-color .15s; }
+  .mk:hover { border-color:#d9cfaf; }
+  .mk .tag { display:inline-block; font:700 12px ui-sans-serif; color:#c0392b; background:#f2dcd7; padding:3px 10px; border-radius:999px; margin-bottom:14px; }
+  .card2 { background:#fffdf7; border:1px solid #e9e0c9; border-radius:16px; box-shadow:0 8px 24px -16px rgba(43,58,77,.25); }
+  .h1 { font:800 22px ui-sans-serif; color:#2b3a4d; letter-spacing:-.01em; }
+  .h1s { font:700 18px ui-sans-serif; color:#2b3a4d; }
+  .sub { font:400 13px ui-sans-serif; color:#8b96a1; margin-top:5px; }
+  .lbl { font:600 12px ui-sans-serif; color:#5d6b79; }
+  .pct { font:800 40px ui-mono,monospace; color:#c0392b; line-height:1; }
+  .pctsm { font:800 30px ui-mono,monospace; color:#c0392b; line-height:1; }
+  .bar { height:9px; background:#f3ead4; border-radius:999px; overflow:hidden; }
+  .bar>i { display:block; height:100%; width:71%; background:#c0392b; border-radius:999px; }
+  .meta { font:400 13px ui-sans-serif; color:#5d6b79; margin-top:10px; }
+  .meta b { font-family:ui-mono,monospace; font-weight:700; color:#2b3a4d; }
+  .btn { display:inline-flex; align-items:center; gap:7px; background:#c0392b; color:#fff; font:700 14px ui-sans-serif; padding:11px 18px; border-radius:10px; white-space:nowrap; }
+  .btn svg{width:15px;height:15px}
+  .row { display:flex; align-items:center; }
+</style>
+
+<div class="options" style="gap:18px">
+
+  <!-- A -->
+  <div class="option mk" data-choice="A" onclick="toggleSelect(this)" style="display:block;padding:22px">
+    <span class="tag">方向 A · 操作并入进度卡</span>
+    <div class="h1">数据中心</div>
+    <div class="sub">统一管理行情、财报、研报等数据的更新进度</div>
+    <div class="card2" style="margin-top:16px;padding:20px 22px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px">
+      <div><div class="lbl">整体进度</div><div class="pct" style="margin-top:6px">71%</div></div>
+      <div>
+        <div class="bar"><i></i></div>
+        <div class="meta"><b>5/7</b> 完成 &nbsp;·&nbsp; ⟳ 预计 <b>14:32:10</b> 完成</div>
+      </div>
+      <div class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>一键更新全部</div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="option mk" data-choice="B" onclick="toggleSelect(this)" style="display:block;padding:22px">
+    <span class="tag">方向 B · 一体控制条</span>
+    <div class="card2" style="padding:18px 24px;display:grid;grid-template-columns:1.2fr auto 1.4fr auto;align-items:center;gap:28px">
+      <div>
+        <div class="h1s">数据中心</div>
+        <div class="sub" style="margin-top:3px">行情 / 财报 / 研报更新</div>
+      </div>
+      <div class="row" style="gap:14px">
+        <div class="pctsm">71%</div>
+        <div class="lbl" style="line-height:1.3">整体<br>进度</div>
+      </div>
+      <div>
+        <div class="bar"><i></i></div>
+        <div class="meta" style="margin-top:8px"><b>5/7</b> 完成 &nbsp;·&nbsp; ⟳ 预计 <b>14:32:10</b></div>
+      </div>
+      <div class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>一键更新</div>
+    </div>
+    <div class="sub" style="margin-top:10px">标题 + 进度 + 操作整合成一条横栏，不再有独立的进度卡。信息密度最高。</div>
+  </div>
+
+  <!-- C -->
+  <div class="option mk" data-choice="C" onclick="toggleSelect(this)" style="display:block;padding:22px">
+    <span class="tag">方向 C · 最小改动精修</span>
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div><div class="h1">数据中心</div><div class="sub">统一管理行情、财报、研报等数据的更新进度</div></div>
+      <div class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>一键更新全部</div>
+    </div>
+    <div class="card2" style="margin-top:16px;padding:20px 22px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px">
+      <div><div class="lbl">整体进度</div><div class="pct" style="margin-top:6px">71%</div></div>
+      <div><div class="lbl" style="margin-bottom:10px"><b style="font-family:ui-mono">5/7</b> 完成</div><div class="bar"><i></i></div></div>
+      <div style="text-align:right"><div class="lbl">预计完成</div><div class="meta" style="margin-top:4px"><b>14:32:10</b></div></div>
+    </div>
+    <div class="sub" style="margin-top:10px">保留现有骨架（按钮仍在右上角），只精修排版、改名、改写说明。改动最小、最稳。</div>
+  </div>
+
+</div>

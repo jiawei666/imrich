@@ -190,6 +190,29 @@ def test_refresh_industry_index_writes_industry_dimension_table(db_path):
         assert stock.parent_industry == "金融"
 
 
+def test_backfill_stock_parent_industry_from_dimension(db_path):
+    """存量股票有二级行业但 parent_industry 为空时，应能从 industries 维度表回填一级行业。
+
+    复现历史 bug：constituents 回填逻辑加入 parent_industry 之前入库的股票，
+    industry(二级名) 已填、parent_industry 为 NULL，导致前端一级行业显示异常。
+    """
+    init_db()
+    with SessionLocal() as s:
+        s.add(Industry(code="801120", name="食品饮料", level=1, parent_name=None))
+        s.add(Industry(code="801123", name="白酒Ⅱ", level=2, parent_name="食品饮料"))
+        # 存量股票：二级行业已填，一级行业为空（旧代码留下的脏数据）
+        s.add(Stock(code="sz000001", name="某酒企", industry="白酒Ⅱ", parent_industry=None))
+        s.commit()
+
+    updated = refresh._backfill_stock_parent_industry()
+    assert updated == 1
+
+    with SessionLocal() as s:
+        stock = s.get(Stock, "sz000001")
+        assert stock.industry == "白酒Ⅱ"
+        assert stock.parent_industry == "食品饮料"
+
+
 def test_refresh_industry_index_handles_first_level_fetch_error(db_path):
     """一级行业抓取失败时记录警告但不影响二级行业写入与后续流程。"""
     init_db()

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -9,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Callable, List, Optional
 
 import pandas as pd
+from sqlalchemy import text
 from tqdm import tqdm
 
 from app.db import SessionLocal
@@ -23,6 +26,8 @@ from app.models import (
     KlineMonth,
     KlineQuarter,
     KlineWeek,
+    RefreshRun,
+    RefreshStepState,
     Stock,
 )
 from app.data.resample import resample_ohlcv
@@ -54,6 +59,15 @@ class RefreshGroup:
     updatedAt: Optional[str] = None
     error: Optional[str] = None
     steps: List[RefreshStep] = field(default_factory=list)
+    last_beat: float = 0.0  # 最近一次观察到进度推进的 epoch 秒（心跳，仅内存）
+
+
+# 进程世代 token：每次进程启动重新生成。持久表里 status==running 但 instance_id
+# 与本值不符，说明那条 running 是上一个已退出进程留下的 → 判中断。
+INSTANCE_ID = uuid.uuid4().hex
+
+HEARTBEAT_INTERVAL = 3.0   # 心跳守护线程的轮询周期（秒）
+STALE_THRESHOLD = 120.0    # running 超过该秒数无进度推进则判僵死
 
 
 def _new_state():
@@ -410,9 +424,43 @@ def _refresh_industry_index(
             s.commit()
         step.done = i
         step.progress = int(i / step.total * 90) if step.total else 90  # 行业占90%，指数占10%
+
+    # 兜底：以本地 industries 维度表为准，把一级行业名重新回填到 stocks.parent_industry。
+    # 不依赖 constituents 抓取是否完整，保证 parent_industry 始终与 industry(二级名) 一致。
+    _backfill_stock_parent_industry()
+
     # 注意：不在此处设 progress=100，因为还有指数成分股步骤
     # run_industry_refresh 会在 refresh_index_constituents 完成后设 100
     # 单独调用 _refresh_industry_index 时，progress 停在 90
+
+
+def _backfill_stock_parent_industry() -> int:
+    """从本地 industries(level=2) 维度表把一级行业名回填到 stocks.parent_industry。
+
+    以 stock.industry(申万二级名) 关联 industries.name(level=2) 取其 parent_name(申万一级名)，
+    纯本地操作、无需联网。即使行业指数刷新时 constituents 抓取部分失败，也能让 parent_industry
+    与 industry 保持一致。用单条批量 UPDATE 完成，锁窗口最小、不扰动并发刷新。返回受影响股票数。
+    """
+    with SessionLocal() as s:
+        result = s.execute(
+            text(
+                """
+                UPDATE stocks
+                SET parent_industry = (
+                    SELECT i.parent_name FROM industries i
+                    WHERE i.level = 2 AND i.name = stocks.industry
+                )
+                WHERE industry IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM industries i
+                    WHERE i.level = 2 AND i.name = stocks.industry
+                      AND i.parent_name IS NOT NULL
+                      AND (stocks.parent_industry IS NULL OR stocks.parent_industry != i.parent_name)
+                )
+                """
+            )
+        )
+        s.commit()
+        return result.rowcount
 
 
 def run_financial_refresh(financial_fn=None):
@@ -873,23 +921,164 @@ def _backfill_state_from_db():
             pass
 
 
-def get_status_snapshot() -> dict:
-    """返回 STATE 的序列化快照。
+def _detect_stale() -> None:
+    """运行时僵死检测：running 但心跳超过阈值未推进 → 判僵死置 error。
 
-    任务 running 时，内存中的 step 数据即为后台线程写入的实时进度；
-    idle/done/error 时，用数据库实际入库量回填（兜底，避免进程重启后丢失）。
+    last_beat 由心跳守护线程在观察到进度推进时更新；last_beat==0 表示守护线程
+    尚未观察过（或测试场景无守护线程），此时不做判定以免误杀。
     """
+    now = time.time()
+    for g in STATE.values():
+        if g.status != "running" or g.last_beat <= 0:
+            continue
+        if now - g.last_beat > STALE_THRESHOLD:
+            g.status = "error"
+            g.error = g.error or "任务超时无响应（可能已卡死）"
+            for s in g.steps:
+                if s.status == "running":
+                    s.status = "error"
+                    s.error = s.error or "任务超时无响应"
+
+
+def get_status_snapshot() -> dict:
+    """返回 STATE 的序列化快照（纯内存，毫秒级）。
+
+    任务 running 时，内存 step 即后台线程写入的实时进度。进程重启后的恢复由
+    `load_state_from_db()` 在启动时一次性完成，不在此热路径上 count 大表。
+    """
+    _detect_stale()
 
     def _grp(g):
         return {"status": g.status, "updatedAt": g.updatedAt,
                 "error": g.error, "steps": [dict(vars(s)) for s in g.steps]}
 
-    result = {k: _grp(v) for k, v in STATE.items()}
+    return {k: _grp(v) for k, v in STATE.items()}
 
-    # 先回填 STATE 本身，再生成快照，保证快照与 STATE 一致
-    _backfill_state_from_db()
 
-    # 重新生成回填后的快照
-    result = {k: _grp(v) for k, v in STATE.items()}
+# ---------------------------------------------------------------------------
+# 进度持久化 + 心跳守护线程 + 启动恢复
+# ---------------------------------------------------------------------------
 
-    return result
+_STEP_FIELDS = ("label", "status", "error", "done", "total", "elapsed", "progress")
+
+
+def persist_state() -> None:
+    """把内存 STATE 落库到 refresh_runs / refresh_steps（upsert）。
+
+    running 的 group 才写入 instance_id 与 heartbeat_at，作为存活/世代凭证。
+    """
+    now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with SessionLocal() as s:
+            for key, g in STATE.items():
+                run = s.get(RefreshRun, key)
+                if run is None:
+                    run = RefreshRun(group_key=key)
+                    s.add(run)
+                run.status = g.status
+                run.updated_at = g.updatedAt or now_iso
+                run.error = g.error
+                if g.status == "running":
+                    run.instance_id = INSTANCE_ID
+                    run.heartbeat_at = g.last_beat or time.time()
+                else:
+                    run.instance_id = None
+                    run.heartbeat_at = None
+                for idx, step in enumerate(g.steps):
+                    row = s.get(RefreshStepState, (key, idx))
+                    if row is None:
+                        row = RefreshStepState(group_key=key, idx=idx)
+                        s.add(row)
+                    for f in _STEP_FIELDS:
+                        setattr(row, f, getattr(step, f))
+            s.commit()
+    except Exception:
+        logger.exception("persist_state 失败")
+
+
+def _progress_fingerprint(g: RefreshGroup) -> tuple:
+    return (g.status, tuple((s.status, s.done, s.progress) for s in g.steps))
+
+
+_hb_thread: Optional[threading.Thread] = None
+_hb_prev_fp: dict = {}
+_hb_last_persisted_fp: Optional[tuple] = None
+
+
+def _heartbeat_once() -> None:
+    """观察 STATE：进度指纹变化即视为有推进，刷新 last_beat；整体有变才落库。"""
+    global _hb_last_persisted_fp
+    now = time.time()
+    for key, g in STATE.items():
+        fp = _progress_fingerprint(g)
+        if _hb_prev_fp.get(key) != fp:
+            g.last_beat = now
+            _hb_prev_fp[key] = fp
+    overall = tuple(_progress_fingerprint(g) for g in STATE.values())
+    if overall != _hb_last_persisted_fp:
+        persist_state()
+        _hb_last_persisted_fp = overall
+
+
+def _heartbeat_loop() -> None:
+    while True:
+        try:
+            _heartbeat_once()
+        except Exception:
+            logger.exception("心跳循环异常")
+        time.sleep(HEARTBEAT_INTERVAL)
+
+
+def start_heartbeat() -> None:
+    """启动心跳守护线程（幂等）。仅在真实服务启动时调用，测试不触发。"""
+    global _hb_thread
+    if _hb_thread is not None and _hb_thread.is_alive():
+        return
+    _hb_thread = threading.Thread(target=_heartbeat_loop, name="refresh-heartbeat", daemon=True)
+    _hb_thread.start()
+
+
+def load_state_from_db() -> None:
+    """进程启动时从持久表恢复 STATE。
+
+    - 持久表为空：用 `_backfill_state_from_db()` 从真实数据 seed（保留"反映实际数据"语义），
+      并落库供后续启动直接读取。
+    - 持久表有数据：逐行恢复；status==running 但 instance_id 与本进程不符的，
+      判为上一个进程留下的中断，置 error（token 对账，秒级，不靠等心跳超时）。
+    """
+    try:
+        with SessionLocal() as s:
+            runs = {r.group_key: r for r in s.query(RefreshRun).all()}
+            steps: dict = {}
+            for row in s.query(RefreshStepState).all():
+                steps.setdefault(row.group_key, {})[row.idx] = row
+    except Exception:
+        logger.exception("load_state_from_db 读取失败")
+        return
+
+    if not runs:
+        _backfill_state_from_db()
+        persist_state()
+        return
+
+    for key, g in STATE.items():
+        run = runs.get(key)
+        if run is None:
+            continue
+        g.status = run.status
+        g.updatedAt = run.updated_at
+        g.error = run.error
+        for idx, step in enumerate(g.steps):
+            row = steps.get(key, {}).get(idx)
+            if row is None:
+                continue
+            for f in _STEP_FIELDS:
+                setattr(step, f, getattr(row, f))
+        # token 对账：上一个进程遗留的 running 判为中断
+        if g.status == "running" and run.instance_id != INSTANCE_ID:
+            g.status = "error"
+            g.error = "上次刷新因进程退出中断"
+            for step in g.steps:
+                if step.status == "running":
+                    step.status = "error"
+                    step.error = "进程中断"

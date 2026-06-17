@@ -18,6 +18,7 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
   function ScreenPage({ strategy }, ref) {
     const [selectedCode, setSelectedCode] = useState<string>('')
     const [presets, setPresets] = useState<Preset[]>([])
+    const [presetsLoading, setPresetsLoading] = useState(true)
     const [stockDetail, setStockDetail] = useState<StockDetail>(STOCK_DETAIL)
     const [detailError, setDetailError] = useState<string | null>(null)
     const [detailLoading, setDetailLoading] = useState(false)
@@ -49,7 +50,10 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
     }))
 
     useEffect(() => {
-      api.presets().then(setPresets).catch(() => setPresets([]))
+      api.presets()
+        .then(setPresets)
+        .catch(() => setPresets([]))
+        .finally(() => setPresetsLoading(false))
     }, [])
 
     // 基本面：运行筛选
@@ -171,7 +175,7 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
                   indices={indexList}
                   indexConstituentMap={indexConstituentMap}
                   showDrawdown={strategy === 'oversold-bluechip'}
-                  loading={screening}
+                  loading={screening || presetsLoading}
                 />
               </div>
               <div className="overflow-y-auto">

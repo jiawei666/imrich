@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { LoadingOverlay } from '@/components/ui/loading-overlay'
+import { ChartSkeleton } from '@/components/ui/skeleton'
 import { FilterDrawer } from '@/components/ui/filter-drawer'
 import { StockListCard } from '@/components/screener/StockListCard'
 import { PriceChart } from '@/components/detail/PriceChart'
@@ -272,8 +273,11 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         </div>
         <div className="min-w-0">
           <Card className="relative">
-            <LoadingOverlay show={klineLoading} />
+            <LoadingOverlay show={klineLoading && kline.day.length > 0} />
             <CardContent className="pt-5">
+              {(stockLoading || klineLoading) && kline.day.length === 0 ? (
+                <ChartSkeleton />
+              ) : (
               <PriceChart
                 stockName={selectedName}
                 stockCode={selectedCode || undefined}
@@ -289,6 +293,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
                 klineDay={kline.day} klineWeek={kline.week}
                 klineMonth={kline.month} klineQuarter={kline.quarter}
               />
+              )}
             </CardContent>
           </Card>
         </div>

@@ -39,6 +39,8 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup():
     init_db()
+    refresh.load_state_from_db()
+    refresh.start_heartbeat()
 
 
 @app.get("/health")

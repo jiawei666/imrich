@@ -19,3 +19,18 @@ def test_get_meta_reports_latest_timestamps(db_path):
     assert meta["financialReports"]["reportPeriod"] == "2026Q1"
     assert meta["researchReports"]["stage2CandidateCount"] == 1
     assert meta["researchReports"]["stage2UpdatedAt"] == "2026-06-02 10:00:00"
+
+
+def test_get_meta_reports_counts(db_path):
+    init_db()
+    with SessionLocal() as s:
+        s.add(Stock(code="sz000001", name="平安银行", updated_at="2026-06-10 10:00:00"))
+        s.add(Stock(code="sz000002", name="万科A", updated_at="2026-06-10 10:00:00"))
+        # 退市股票不计入 stockList.count
+        s.add(Stock(code="sz000003", name="已退市", updated_at="2026-06-10 10:00:00", delisted_at="2026-01-01"))
+        s.add(ResearchReport(report_id="R1", code="sz000001", title="订单饱满", published_at="2026-06-01", stage="parsed", updated_at="2026-06-02 10:00:00"))
+        s.add(ResearchReport(report_id="R2", code="sz000002", title="待解析", published_at="2026-06-01", stage="meta", updated_at="2026-06-02 10:00:00"))
+        s.commit()
+    meta = get_meta()
+    assert meta["stockList"]["count"] == 2
+    assert meta["researchReports"]["count"] == 2

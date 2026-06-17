@@ -1,0 +1,80 @@
+<h2>方向 B 收窄 + 右侧补块</h2>
+<p class="subtitle">控制条收窄靠左，右边补一块内容。顶部 PageHeader 已有 i'm Rich logo，所以右块给几个候选。先看顶部整体效果，再从下面三选一（点击右块选中）。</p>
+
+<style>
+  .stage { background:#f6efdc; border-radius:14px; padding:22px; margin-bottom:22px; }
+  .card2 { background:#fffdf7; border:1px solid #e9e0c9; border-radius:16px; box-shadow:0 8px 24px -16px rgba(43,58,77,.25); }
+  .h1s { font:700 18px ui-sans-serif; color:#2b3a4d; }
+  .sub { font:400 13px ui-sans-serif; color:#8b96a1; }
+  .lbl { font:600 12px ui-sans-serif; color:#5d6b79; }
+  .pctsm { font:800 30px ui-mono,monospace; color:#c0392b; line-height:1; }
+  .bar { height:9px; background:#f3ead4; border-radius:999px; overflow:hidden; }
+  .bar>i { display:block; height:100%; width:71%; background:#c0392b; border-radius:999px; }
+  .meta { font:400 13px ui-sans-serif; color:#5d6b79; }
+  .meta b { font-family:ui-mono,monospace; font-weight:700; color:#2b3a4d; }
+  .btn { display:inline-flex; align-items:center; gap:7px; background:#c0392b; color:#fff; font:700 14px ui-sans-serif; padding:10px 16px; border-radius:10px; white-space:nowrap; }
+  .btn svg{width:15px;height:15px}
+  .toprow { display:flex; gap:18px; align-items:stretch; }
+  .ctrl { flex:1 1 auto; padding:16px 22px; display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:24px; }
+  .rightblk { flex:0 0 300px; padding:18px 20px; display:flex; flex-direction:column; justify-content:center; }
+  .opt-r { cursor:pointer; border:2px solid transparent; border-radius:16px; transition:border-color .15s; }
+  .opt-r:hover{ border-color:#d9cfaf; }
+  .opt-r.selected{ border-color:#c0392b; }
+  .statline{ display:flex; align-items:baseline; gap:8px; }
+  .statline+.statline{ margin-top:12px; }
+  .statnum{ font:800 22px ui-mono,monospace; color:#2b3a4d; line-height:1; }
+  .statlbl{ font:500 12px ui-sans-serif; color:#8b96a1; }
+</style>
+
+<!-- 顶部整体效果（右块以"数据概览"示意） -->
+<div class="stage">
+  <div class="label" style="margin-bottom:10px">顶部整体（右块=候选①示意）</div>
+  <div class="toprow">
+    <div class="card2 ctrl">
+      <div class="h1s">数据中心</div>
+      <div style="display:flex;align-items:center;gap:10px"><div class="pctsm">71%</div><div class="lbl" style="line-height:1.2">整体<br>进度</div></div>
+      <div><div class="bar"><i></i></div><div class="meta" style="margin-top:8px"><b>5/7</b> 完成 · ⟳ 预计 <b>14:32:10</b></div></div>
+      <div class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>一键更新</div>
+    </div>
+    <div class="card2 rightblk">
+      <div class="statline"><span class="statnum">5,432</span><span class="statlbl">只股票</span></div>
+      <div class="statline"><span class="statnum">14,579</span><span class="statlbl">份研报</span></div>
+      <div class="statline"><span class="statnum">06-16</span><span class="statlbl">最近更新</span></div>
+    </div>
+  </div>
+</div>
+
+<h3>右块放什么？（点击选择）</h3>
+<div class="options" data-multiselect style="gap:16px;margin-top:8px">
+
+  <div class="option opt-r" data-choice="stats" onclick="toggleSelect(this)">
+    <div class="card2" style="padding:18px 20px">
+      <div class="lbl" style="margin-bottom:14px">① 数据概览</div>
+      <div class="statline"><span class="statnum">5,432</span><span class="statlbl">只股票</span></div>
+      <div class="statline"><span class="statnum">14,579</span><span class="statlbl">份研报</span></div>
+      <div class="statline"><span class="statnum">06-16</span><span class="statlbl">最近更新</span></div>
+    </div>
+    <p style="font:400 12px ui-sans-serif;color:#8b96a1;margin:10px 4px 0">实用：一眼看到库里有多少数据。空间利用最高。</p>
+  </div>
+
+  <div class="option opt-r" data-choice="logo" onclick="toggleSelect(this)">
+    <div class="card2" style="padding:24px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:150px">
+      <div style="font:800 30px ui-sans-serif;letter-spacing:-.02em"><span style="color:#2b3a4d">i'm</span><span style="color:#c0392b">Rich</span></div>
+      <div class="sub" style="margin-top:8px">A 股选股器</div>
+    </div>
+    <p style="font:400 12px ui-sans-serif;color:#8b96a1;margin:10px 4px 0">品牌锚点：大号 logo + 标语。但与顶部 PageHeader 的 logo 重复，偏装饰。</p>
+  </div>
+
+  <div class="option opt-r" data-choice="illus" onclick="toggleSelect(this)">
+    <div class="card2" style="padding:18px 20px;min-height:150px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#fffdf7,#f3ead4)">
+      <svg width="120" height="90" viewBox="0 0 120 90" fill="none">
+        <polyline points="8,70 30,52 50,60 72,30 96,40 112,14" stroke="#c0392b" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="112" cy="14" r="5" fill="#c0392b"/>
+        <line x1="8" y1="82" x2="112" y2="82" stroke="#e9e0c9" stroke-width="2"/>
+      </svg>
+    </div>
+    <p style="font:400 12px ui-sans-serif;color:#8b96a1;margin:10px 4px 0">装饰插画：呼应"选股/上涨"主题。好看但无信息量。</p>
+  </div>
+
+</div>
+<p class="subtitle" style="margin-top:16px">可多选/也可以说"右块再窄点 / 控制条更窄"等。控制条已比之前明显收窄，右块约占 300px。</p>

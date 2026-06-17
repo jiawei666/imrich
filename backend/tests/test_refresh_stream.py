@@ -73,23 +73,24 @@ def test_get_status_snapshot_preserves_running_step_progress_when_history_exists
         assert step["progress"] == 30, f"step {i} progress overwritten: {step}"
 
 
-def test_get_status_snapshot_backfills_idle_step_from_db(client):
-    """非运行中的步骤仍应按数据库实际数据量回填进度为 100% 并标记为 done（兜底逻辑）。"""
+def test_load_seeds_idle_step_from_db(client):
+    """启动恢复（持久表为空时）按数据库实际数据量 seed 进度为 100% 并标记 done（兜底逻辑）。"""
     refresh.reset_state()
 
     with SessionLocal() as s:
         s.add(FinancialReport(code="sz000001", report_date="2025-03-31", updated_at="2025-01-01 00:00:00"))
         s.commit()
 
+    refresh.load_state_from_db()
     snapshot = refresh.get_status_snapshot()
     step0 = snapshot["fundamental"]["steps"][0]
     assert step0["status"] == "done"
     assert step0["progress"] == 100
 
 
-def test_get_status_snapshot_backfills_research_pdfs_step_reflects_remaining_pending(client):
-    """进程重启等原因导致研报PDF解析的内存状态丢失重置后，
-    若近一年内仍有未解析的研报，回填不应误标记为 done/100%（否则会掩盖大量未完成的解析）。"""
+def test_load_research_pdfs_step_reflects_remaining_pending(client):
+    """进程重启导致研报PDF解析的内存状态重置后，启动恢复时
+    若近一年内仍有未解析的研报，seed 不应误标记为 done/100%（否则会掩盖大量未完成的解析）。"""
     refresh.reset_state()
 
     recent_date = datetime.now().strftime("%Y-%m-%d")
@@ -99,6 +100,7 @@ def test_get_status_snapshot_backfills_research_pdfs_step_reflects_remaining_pen
             s.add(ResearchReport(report_id=f"R{i}", code=f"sz00000{i}", title=f"t{i}", published_at=recent_date, stage="metadata"))
         s.commit()
 
+    refresh.load_state_from_db()
     snapshot = refresh.get_status_snapshot()
     step4 = snapshot["fundamental"]["steps"][4]
     assert step4["done"] == 1
@@ -107,8 +109,8 @@ def test_get_status_snapshot_backfills_research_pdfs_step_reflects_remaining_pen
     assert step4["status"] != "done"
 
 
-def test_get_status_snapshot_backfills_research_pdfs_step_as_done_when_no_pending(client):
-    """近一年内的研报全部解析完成时，研报PDF解析步骤回填为 done/100%。"""
+def test_load_research_pdfs_step_as_done_when_no_pending(client):
+    """近一年内的研报全部解析完成时，启动恢复 seed 研报PDF解析步骤为 done/100%。"""
     refresh.reset_state()
 
     recent_date = datetime.now().strftime("%Y-%m-%d")
@@ -116,6 +118,7 @@ def test_get_status_snapshot_backfills_research_pdfs_step_as_done_when_no_pendin
         s.add(ResearchReport(report_id="R1", code="sz000001", title="t1", published_at=recent_date, stage="parsed"))
         s.commit()
 
+    refresh.load_state_from_db()
     snapshot = refresh.get_status_snapshot()
     step4 = snapshot["fundamental"]["steps"][4]
     assert step4["done"] == 1

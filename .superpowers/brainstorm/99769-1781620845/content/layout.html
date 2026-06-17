@@ -1,0 +1,74 @@
+<h2>两行流水线 + 狂放曲线：先定流向</h2>
+<p class="subtitle">7 个任务分两行（3 + 4）。关键差异在于第二行的走向，决定了曲线如何连贯。每段曲线的曲率、振幅、弯曲方向都不同，呈现自然流动感。</p>
+
+<style>
+  .flowcard { background:#fbf9f6; border-radius:16px; padding:8px 4px; }
+  .flow-node circle { fill:#fff; }
+  .flow-node .done { fill:#2b3a4d; }
+  .flow-node .run  { fill:#fff; stroke:#c0392b; stroke-width:5; }
+  .flow-node text { font:600 12px ui-sans-serif,system-ui; fill:#2b3a4d; text-anchor:middle; }
+  .flow-node .num { font:700 11px ui-sans-serif; fill:#fff; text-anchor:middle; }
+  .flow-path { fill:none; stroke:#c0392b; stroke-width:3; stroke-linecap:round; stroke-dasharray:9 7; }
+  .flow-path.done { stroke:#2b3a4d; }
+  .flow-path.wait { stroke:#cdd5dd; stroke-width:2.5; opacity:.7; }
+</style>
+
+<div class="cards">
+  <!-- Option A: 蛇形 -->
+  <div class="card" data-choice="snake" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#fbf9f6;padding:0">
+      <svg viewBox="0 0 760 300" style="width:100%;display:block">
+        <!-- row1 L->R: 1,2,3 ; row2 R->L: 4,5,6,7 (蛇形回折) -->
+        <path class="flow-path done" d="M110,70 C200,135 295,15 380,70"/>
+        <path class="flow-path done" d="M380,70 C470,5 565,150 650,70"/>
+        <path class="flow-path" d="M650,70 C770,108 770,192 650,230"/>
+        <path class="flow-path" d="M650,230 C555,300 545,160 465,230"/>
+        <path class="flow-path wait" d="M465,230 C375,165 360,305 280,230"/>
+        <path class="flow-path wait" d="M280,230 C195,180 170,300 95,230"/>
+        <g class="flow-node">
+          <circle class="done" cx="110" cy="70" r="17"/><text class="num" x="110" y="74">1</text>
+          <circle class="done" cx="380" cy="70" r="17"/><text class="num" x="380" y="74">2</text>
+          <circle class="run"  cx="650" cy="70" r="15"/><text x="650" y="74" style="fill:#c0392b">3</text>
+          <circle cx="650" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="650" y="234">4</text>
+          <circle cx="465" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="465" y="234">5</text>
+          <circle cx="280" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="280" y="234">6</text>
+          <circle cx="95"  cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="95"  y="234">7</text>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>A · 蛇形回折（推荐）</h3>
+      <p>第一行 1→2→3 向右，右端绕一个大弯下到第二行，第二行 4→5→6→7 向左回折。像一条连续的缎带蛇行而下，最有"数据流动"的连贯感。</p>
+    </div>
+  </div>
+
+  <!-- Option B: 双行同向 -->
+  <div class="card" data-choice="parallel" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#fbf9f6;padding:0">
+      <svg viewBox="0 0 760 300" style="width:100%;display:block">
+        <!-- both rows L->R, dramatic return swoop 3->4 -->
+        <path class="flow-path done" d="M110,70 C200,135 295,15 380,70"/>
+        <path class="flow-path done" d="M380,70 C470,5 565,150 650,70"/>
+        <path class="flow-path" d="M650,70 C540,180 290,115 110,230"/>
+        <path class="flow-path" d="M110,230 C210,295 200,160 290,230"/>
+        <path class="flow-path wait" d="M290,230 C385,165 375,305 470,230"/>
+        <path class="flow-path wait" d="M470,230 C560,180 565,300 650,230"/>
+        <g class="flow-node">
+          <circle class="done" cx="110" cy="70" r="17"/><text class="num" x="110" y="74">1</text>
+          <circle class="done" cx="380" cy="70" r="17"/><text class="num" x="380" y="74">2</text>
+          <circle class="run"  cx="650" cy="70" r="15"/><text x="650" y="74" style="fill:#c0392b">3</text>
+          <circle cx="110" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="110" y="234">4</text>
+          <circle cx="290" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="290" y="234">5</text>
+          <circle cx="470" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="470" y="234">6</text>
+          <circle cx="650" cy="230" r="17" stroke="#cdd5dd" stroke-width="4"/><text x="650" y="234">7</text>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>B · 双行同向 + 回扫</h3>
+      <p>两行都从左往右读，3→4 用一条大跨度斜向曲线扫回左侧。阅读方向一致，但那条回扫线会横穿版面、比较抢眼。</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:18px">曲线已按"狂放 + 每段不同曲率"画好：有的深俯冲、有的高拱起、振幅和弯向都错开。颜色只是示意（深色=已完成，红色=运行中，灰色=待执行）。选一个流向，我再细调曲线力度。</p>
