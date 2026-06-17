@@ -12,6 +12,7 @@ from typing import Callable, List, Optional
 
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from tqdm import tqdm
 
 from app.db import SessionLocal
@@ -136,27 +137,37 @@ def run_stock_list_refresh(constituents_fn=None):
         step.progress = 100
         step.elapsed = _fmt(time.time() - started)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with SessionLocal() as s:
-            current_codes = set()
-            for r in tqdm(rows, desc="股票列表写库"):
-                if _cancel_flag:
-                    step.status = "done"
-                    step.error = "服务关闭，任务中断"
-                    return
-                current_codes.add(r["code"])
-                obj = s.get(Stock, r["code"])
-                if obj is None:
-                    obj = Stock(code=r["code"], is_bj=r["code"].startswith("bj"))
-                    s.add(obj)
-                obj.name = r["name"]
-                obj.market_cap = r.get("market_cap")
-                obj.is_bj = r["code"].startswith("bj")
-                obj.delisted_at = None
-                obj.updated_at = now
-            for obj in s.query(Stock).all():
-                if obj.code not in current_codes and obj.delisted_at is None:
-                    obj.delisted_at = now
-            s.commit()
+        # run_full_refresh 阶段1中本任务与行业成分股回填并发写 stocks，二者都走
+        # "查不到则插入" 的逻辑，可能同时插入同一 code 触发唯一约束冲突。整体重试：
+        # 重试时并发方已提交，s.get 命中后改走更新路径，冲突自然消解。
+        for attempt in range(5):
+            try:
+                with SessionLocal() as s:
+                    current_codes = set()
+                    for r in tqdm(rows, desc="股票列表写库"):
+                        if _cancel_flag:
+                            step.status = "done"
+                            step.error = "服务关闭，任务中断"
+                            return
+                        current_codes.add(r["code"])
+                        obj = s.get(Stock, r["code"])
+                        if obj is None:
+                            obj = Stock(code=r["code"], is_bj=r["code"].startswith("bj"))
+                            s.add(obj)
+                        obj.name = r["name"]
+                        obj.market_cap = r.get("market_cap")
+                        obj.is_bj = r["code"].startswith("bj")
+                        obj.delisted_at = None
+                        obj.updated_at = now
+                    for obj in s.query(Stock).all():
+                        if obj.code not in current_codes and obj.delisted_at is None:
+                            obj.delisted_at = now
+                    s.commit()
+                break
+            except IntegrityError:
+                if attempt == 4:
+                    raise
+                logger.warning("股票列表写库唯一约束冲突，第 %d 次重试", attempt + 1, exc_info=True)
         step.status = "done"
     except Exception as e:
         step.status = "error"
@@ -425,10 +436,6 @@ def _refresh_industry_index(
         step.done = i
         step.progress = int(i / step.total * 90) if step.total else 90  # 行业占90%，指数占10%
 
-    # 兜底：以本地 industries 维度表为准，把一级行业名重新回填到 stocks.parent_industry。
-    # 不依赖 constituents 抓取是否完整，保证 parent_industry 始终与 industry(二级名) 一致。
-    _backfill_stock_parent_industry()
-
     # 注意：不在此处设 progress=100，因为还有指数成分股步骤
     # run_industry_refresh 会在 refresh_index_constituents 完成后设 100
     # 单独调用 _refresh_industry_index 时，progress 停在 90
@@ -512,8 +519,14 @@ def run_industry_refresh(
     constituents_fn=None,
     industries_first_fn=None,
     index_constituents_fn=None,
+    backfill=True,
 ):
-    """独立执行步骤3：行业与指数数据刷新（申万行业指数 + 宽基指数成分股）。"""
+    """独立执行步骤3：行业与指数数据刷新（申万行业指数 + 宽基指数成分股）。
+
+    backfill=True 时在最后把一级行业名回填到 stocks.parent_industry。run_full_refresh 中
+    本任务与股票列表刷新并发写 stocks，会与回填争用写锁，故那里传 backfill=False，改由
+    run_full_refresh 在所有并发任务结束后统一回填。
+    """
     if industries_fn is None:
         from app.data.fetch_fundamental import get_sw_industries
         industries_fn = get_sw_industries
@@ -532,6 +545,8 @@ def run_industry_refresh(
     try:
         _refresh_industry_index(group, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn)
         refresh_index_constituents(index_constituents_fn, step=step)
+        if backfill:
+            _backfill_stock_parent_industry()
         step.progress = 100
         step.status = "done"
     except Exception as e:
@@ -663,7 +678,7 @@ def run_full_refresh(
                 stock_list_fut,
                 pool.submit(run_financial_refresh, financial_fn),
                 pool.submit(run_forecasts_refresh, forecast_fn, express_fn),
-                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn),
+                pool.submit(run_industry_refresh, industries_fn, industry_hist_fn, constituents_fn, industries_first_fn, index_constituents_fn, backfill=False),
             ]
             # 阶段2：① 完成后提交
             stock_list_fut.exception()  # 阻塞等待①（成功或失败都继续）
@@ -684,6 +699,8 @@ def run_full_refresh(
                     errors.append(exc)
         if errors:
             raise errors[0]
+        # 所有并发任务已结束，此处单线程回填一级行业，避免与股票列表刷新争用 stocks 写锁。
+        _backfill_stock_parent_industry()
         group.status = "done"
         group.updatedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # 同步标记子组为 done（子任务各自管理 step，但 group 可能未更新）
