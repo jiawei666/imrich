@@ -30,7 +30,11 @@ def _shutdown():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+    allow_origins=[
+        "http://localhost:5173", "http://localhost:5174",
+        "http://127.0.0.1:5173", "http://127.0.0.1:5174",
+        "http://10.11.41.72:5173", "http://10.11.41.72:5174",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

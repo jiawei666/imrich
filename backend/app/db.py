@@ -1,7 +1,10 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import get_db_path
+
+SQLITE_BUSY_TIMEOUT_MS = 30000
 
 
 class Base(DeclarativeBase):
@@ -14,14 +17,15 @@ def _make_engine():
     engine = create_engine(
         f"sqlite:///{get_db_path()}",
         future=True,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": SQLITE_BUSY_TIMEOUT_MS / 1000},
+        poolclass=NullPool,
     )
 
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.close()
 
@@ -36,8 +40,10 @@ def init_db() -> None:
     """重建 engine 并按 IMRICH_DB_PATH 重新指向；SessionLocal 原地 reconfigure，
     使已 `from app.db import SessionLocal` 的模块也能用上新 engine。"""
     global engine
+    old_engine = engine
     engine = _make_engine()
     SessionLocal.configure(bind=engine)
+    old_engine.dispose()
     import app.models  # noqa: F401  确保模型已注册
     Base.metadata.create_all(engine)
     _migrate_forecasts_constraint(engine)

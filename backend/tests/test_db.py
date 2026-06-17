@@ -1,5 +1,8 @@
 import sqlite3
 
+from sqlalchemy.pool import NullPool
+
+import app.db
 from app.db import SessionLocal, init_db
 from app.models import Forecast, Stock
 
@@ -110,3 +113,10 @@ def test_migrate_stocks_adds_parent_industry(db_path):
 
     with SessionLocal() as s:
         assert s.get(Stock, "sz000001").parent_industry == "金融"
+
+
+def test_sqlite_engine_does_not_use_bounded_queue_pool(db_path):
+    """SQLite 写锁等待期间不应再被 SQLAlchemy QueuePool 容量限制放大成取连接超时。"""
+    init_db()
+
+    assert isinstance(app.db.engine.pool, NullPool)

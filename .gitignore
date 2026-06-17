@@ -12,6 +12,7 @@ __pycache__/
 venv/
 backend/backend/data/research
 backend/data/research
+data/research
 
 # Local data / databases
 *.db

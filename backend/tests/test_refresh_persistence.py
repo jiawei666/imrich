@@ -1,8 +1,10 @@
 import time
+import sqlite3
+import threading
 
 from app import refresh
 from app.db import SessionLocal
-from app.models import FinancialReport
+from app.models import FinancialReport, RefreshRun
 
 
 def test_persist_and_load_round_trip(client):
@@ -111,3 +113,32 @@ def test_snapshot_does_not_backfill_from_data_per_call(client):
 
     snap = refresh.get_status_snapshot()
     assert snap["fundamental"]["steps"][0]["status"] == "idle"
+
+
+def test_persist_state_waits_for_transient_sqlite_write_lock(client, db_path):
+    """刷新主任务写库期间，心跳持久化应等待短暂 SQLite 写锁释放后成功落库。"""
+    refresh.reset_state()
+    g = refresh.STATE["fundamental"]
+    g.status = "running"
+    g.updatedAt = "2026-06-17 10:00:00"
+
+    lock_conn = sqlite3.connect(db_path, timeout=1, check_same_thread=False)
+    lock_conn.execute("BEGIN IMMEDIATE")
+
+    def release_lock():
+        time.sleep(6)
+        lock_conn.commit()
+        lock_conn.close()
+
+    releaser = threading.Thread(target=release_lock)
+    releaser.start()
+    try:
+        refresh.persist_state()
+    finally:
+        releaser.join()
+
+    with SessionLocal() as s:
+        run = s.get(RefreshRun, "fundamental")
+        assert run is not None
+        assert run.status == "running"
+        assert run.updated_at == "2026-06-17 10:00:00"
