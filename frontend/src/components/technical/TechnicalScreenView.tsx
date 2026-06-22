@@ -1,15 +1,13 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { ChartSkeleton } from '@/components/ui/skeleton'
 import { FilterDrawer } from '@/components/ui/filter-drawer'
 import { StockListCard } from '@/components/screener/StockListCard'
-import { PriceChart } from '@/components/detail/PriceChart'
+import { StockDetailPanel } from '@/components/detail/StockDetailPanel'
 import { TechnicalFilterCard } from './TechnicalFilterCard'
 import { api } from '@/lib/api'
-import type { Kline, KlineTimeframe, Preset, StrategyId, StockRow, ScreenSnapshotMeta, StockSortField, SortOrder } from '@/types'
-
-const EMPTY_KLINE: Record<KlineTimeframe, Kline[]> = { day: [], week: [], month: [], quarter: [] }
+import { useMediaQuery } from '@/lib/useMediaQuery'
+import type { StockDetail, Preset, StrategyId, StockRow, ScreenSnapshotMeta, StockSortField, SortOrder } from '@/types'
 
 export interface TechnicalScreenViewHandle {
   toggleFilter: () => void
@@ -18,17 +16,19 @@ export interface TechnicalScreenViewHandle {
 export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   strategy: StrategyId
   preset: Preset | null
+  onAddToWatchlist?: (code: string, name: string, industry?: string) => void
 }>(function TechnicalScreenView({
   strategy,
   preset,
+  onAddToWatchlist,
 }, ref) {
   const [paramValues, setParamValues] = useState<Record<string, number>>({})
   const [selectedCode, setSelectedCode] = useState<string>('')
-  const [selectedName, setSelectedName] = useState<string>('')
-  const [kline, setKline] = useState<Record<KlineTimeframe, Kline[]>>(EMPTY_KLINE)
-  const [klineLoading, setKlineLoading] = useState(false)
+  const [stockDetail, setStockDetail] = useState<StockDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [screening, setScreening] = useState(false)
+  const [mobileChartOpen, setMobileChartOpen] = useState(false)
   const screeningRef = useRef(false)
 
   // ---- 统一列表数据 ----
@@ -45,6 +45,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
   const [searchQuery, setSearchQuery] = useState('')
   const [historyList, setHistoryList] = useState<ScreenSnapshotMeta[]>([])
   const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null)
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
   // 'market' = 全市场列表, 'screen' = 筛选结果, 'history' = 历史结果
   const [dataSource, setDataSource] = useState<'market' | 'screen' | 'history'>('market')
 
@@ -86,7 +87,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
         setStockData(items)
         if (items.length > 0 && page === 1 && !selectedCode) {
           setSelectedCode(items[0].code)
-          setSelectedName(items[0].name)
         }
       }
       setStockTotal(res.total)
@@ -125,32 +125,24 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setSelectedHistoryDate(null)
     setDataSource('market')
     setSelectedCode('')
-    setSelectedName('')
+    setStockDetail(null)
+    setMobileChartOpen(false)
     // 主动加载历史列表（preset 变化时 strategy 可能不变，需手动触发）
     loadHistoryList()
   }, [preset, loadHistoryList])
 
-  // ---- 选中股票 → 拉取K线 ----
+  // ---- 选中股票 → 拉取详情 ----
   useEffect(() => {
-    if (!selectedCode) return
-    let cancelled = false
-    setKlineLoading(true)
-    const load = async () => {
-      try {
-        const periods: KlineTimeframe[] = ['day', 'week', 'month', 'quarter']
-        const results = await Promise.all(periods.map((p) => api.stockKline(selectedCode, p)))
-        if (cancelled) return
-        setKline({
-          day: results[0].data, week: results[1].data,
-          month: results[2].data, quarter: results[3].data,
-        })
-      } catch {
-        if (!cancelled) setKline(EMPTY_KLINE)
-      } finally {
-        if (!cancelled) setKlineLoading(false)
-      }
+    if (!selectedCode) {
+      setStockDetail(null)
+      return
     }
-    load()
+    let cancelled = false
+    setDetailLoading(true)
+    api.stockDetail(selectedCode)
+      .then((d) => { if (!cancelled) setStockDetail(d) })
+      .catch(() => { if (!cancelled) setStockDetail(null) })
+      .finally(() => { if (!cancelled) setDetailLoading(false) })
     return () => { cancelled = true }
   }, [selectedCode])
 
@@ -188,7 +180,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
       setSearchQuery('')
       if (res.items[0]) {
         setSelectedCode(res.items[0].code)
-        setSelectedName(res.items[0].name)
       }
       // 刷新历史列表
       loadHistoryList()
@@ -200,7 +191,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
       screeningRef.current = false
       setScreening(false)
     }
-  }, [strategy, paramValues, preset, loadHistoryList])
+  }, [strategy, paramValues, loadHistoryList])
 
   // ---- 选择历史日期 ----
   const handleSelectHistoryDate = useCallback(async (date: string) => {
@@ -214,7 +205,6 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
       setSearchQuery('')
       if (res.items[0]) {
         setSelectedCode(res.items[0].code)
-        setSelectedName(res.items[0].name)
       }
     } catch {
       // 请求失败时不切换
@@ -228,13 +218,13 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
     setSearchQuery('')
   }, [])
 
-  const handleSelectCode = useCallback((code: string, name: string) => {
+  const handleSelectCode = useCallback((code: string) => {
     setSelectedCode(code)
-    setSelectedName(name)
+    setMobileChartOpen(true)
   }, [])
 
   return (
-    <div className="relative flex flex-1 overflow-hidden">
+    <div className="relative flex flex-1 overflow-visible lg:overflow-hidden">
       <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} title={preset?.name ?? '技术面战法'}>
         <TechnicalFilterCard
           preset={preset}
@@ -246,7 +236,7 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
       </FilterDrawer>
 
       {/* 主内容区 */}
-      <main className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+      <main className="grid min-w-0 flex-1 grid-cols-1 gap-4 overflow-visible p-4 sm:gap-5 sm:p-6 lg:overflow-y-auto 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
         <div className="flex min-w-0 flex-col gap-5">
           <StockListCard
             data={stockData}
@@ -271,33 +261,48 @@ export const TechnicalScreenView = forwardRef<TechnicalScreenViewHandle, {
             onRetry={isMarketMode ? () => fetchMarketData(1, false) : undefined}
           />
         </div>
-        <div className="min-w-0">
-          <Card className="relative">
-            <LoadingOverlay show={klineLoading && kline.day.length > 0} />
-            <CardContent className="pt-5">
-              {(stockLoading || klineLoading) && kline.day.length === 0 ? (
-                <ChartSkeleton />
-              ) : (
-              <PriceChart
-                stockName={selectedName}
-                stockCode={selectedCode || undefined}
-                subTitle={
-                  stockData.length > 0
-                    ? (() => {
-                        const row = stockData.find((s) => s.code === selectedCode)
-                        if (!row?.parent_industry && !row?.industry) return undefined
-                        return `${row?.parent_industry ?? '—'} · ${row?.industry ?? '—'}`
-                      })()
-                    : undefined
-                }
-                klineDay={kline.day} klineWeek={kline.week}
-                klineMonth={kline.month} klineQuarter={kline.quarter}
+        {isDesktop && selectedCode && (
+          <div className="min-w-0">
+            {stockDetail ? (
+              <StockDetailPanel
+                detail={stockDetail}
+                candidate={null}
+                onClose={() => { setSelectedCode(''); setStockDetail(null) }}
+                loading={detailLoading}
+                onAddToWatchlist={onAddToWatchlist}
               />
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            ) : detailLoading ? (
+              <Card className="relative">
+                <CardContent className="pt-5">
+                  <ChartSkeleton />
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        )}
       </main>
+      {!isDesktop && mobileChartOpen && selectedCode && (
+        <div
+          data-mobile-detail-overlay
+          className="fixed inset-0 z-[70] overflow-y-auto bg-cream p-3 lg:hidden"
+        >
+          {stockDetail ? (
+            <StockDetailPanel
+              detail={stockDetail}
+              candidate={null}
+              onClose={() => setMobileChartOpen(false)}
+              loading={detailLoading}
+              onAddToWatchlist={onAddToWatchlist}
+            />
+          ) : detailLoading ? (
+            <Card className="relative min-h-full">
+              <CardContent className="px-3 pt-4">
+                <ChartSkeleton />
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 })
