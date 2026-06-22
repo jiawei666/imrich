@@ -14,6 +14,7 @@ from app.screen import run_screen
 from app.kline_service import get_stock_kline
 from app.stock_detail import get_stock_detail
 from app.meta import get_meta
+from app import watchlist as watchlist_router
 
 app = FastAPI(title="i'mRich 选股器")
 
@@ -38,6 +39,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(watchlist_router.router)
 
 
 @app.on_event("startup")
@@ -95,12 +98,13 @@ async def refresh_all():
 
 
 FUNDAMENTAL_STEP_DEPS = {
-    "research-pdfs": ("research-meta", "请先刷新研报元数据"),
+    "industry-research-meta": ("research-meta", "请先刷新研报元数据"),
+    "research-pdfs": ("industry-research-meta", "请先刷新产业研报元数据"),
 }
 
 FUNDAMENTAL_STEP_MAP = {
     "financial": 0, "forecasts": 1, "industry": 2,
-    "research-meta": 3, "research-pdfs": 4,
+    "research-meta": 3, "industry-research-meta": 4, "research-pdfs": 5,
 }
 
 
@@ -133,6 +137,7 @@ async def refresh_fundamental_step(step: str):
         "forecasts": lambda: refresh.run_forecasts_refresh(),
         "industry": lambda: refresh.run_industry_refresh(),
         "research-meta": lambda: refresh.run_research_meta_refresh(),
+        "industry-research-meta": lambda: refresh.run_industry_research_meta_refresh(),
         "research-pdfs": lambda: refresh.run_research_pdfs_refresh(
             research_download_fn=download_pdf,
             research_parse_fn=parse_pdf_text,
