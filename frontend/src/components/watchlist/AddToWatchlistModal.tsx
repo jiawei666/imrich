@@ -40,9 +40,11 @@ export function AddToWatchlistModal({
 
   useEffect(() => {
     if (!open) return
-    setShowNewGroup(false)
-    setNewGroupName('')
+
+    let mounted = true
+
     api.watchlist.groups().then((gs) => {
+      if (!mounted) return
       setGroups(gs)
       const defaultName = strategyId ? STRATEGY_NAMES[strategyId] ?? strategyId : null
       const match = defaultName ? gs.find((g) => g.name === defaultName) : null
@@ -56,7 +58,13 @@ export function AddToWatchlistModal({
         setSelectedGroupId(gs[0]?.id ?? null)
         setUseAutoCreate(false)
       }
-    }).catch(() => setGroups([]))
+      setShowNewGroup(false)
+      setNewGroupName('')
+    }).catch(() => {
+      if (mounted) setGroups([])
+    })
+
+    return () => { mounted = false }
   }, [open, strategyId])
 
   if (!open) return null
@@ -79,7 +87,7 @@ export function AddToWatchlistModal({
             stock_name: stockName,
             industry,
             strategy_id: strategyId,
-          }).catch(() => {})
+          })
         }
       } else if (useAutoCreate && strategyId) {
         await api.watchlist.addItem({
@@ -87,7 +95,7 @@ export function AddToWatchlistModal({
           stock_name: stockName,
           industry,
           strategy_id: strategyId,
-        }).catch(() => {})
+        })
       } else if (selectedGroupId != null) {
         await api.watchlist.addItem({
           group_id: selectedGroupId,
@@ -95,10 +103,14 @@ export function AddToWatchlistModal({
           stock_name: stockName,
           industry,
           strategy_id: strategyId,
-        }).catch(() => {})
+        })
       }
       onAdded()
       onClose()
+    } catch (error) {
+      // 静默处理 409 错误（已添加），其他错误也先静默处理
+      // TODO: 后续可以添加 toast 提示
+      console.error('Failed to add to watchlist:', error)
     } finally {
       setSubmitting(false)
     }

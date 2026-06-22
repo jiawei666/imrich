@@ -38,15 +38,23 @@ export function WatchlistManageOverlay({
 
   const handleRenameConfirm = async () => {
     if (editingGroupId == null || !editingName.trim()) return
-    await api.watchlist.updateGroup(editingGroupId, { name: editingName.trim() })
-    setEditingGroupId(null)
-    onChanged()
+    try {
+      await api.watchlist.updateGroup(editingGroupId, { name: editingName.trim() })
+      setEditingGroupId(null)
+      onChanged()
+    } catch (error) {
+      console.error('Failed to rename group:', error)
+    }
   }
 
   const handleDeleteGroup = async (id: number) => {
     if (!confirm('删除该分组将同时删除其中所有股票，确认吗？')) return
-    await api.watchlist.deleteGroup(id)
-    onChanged()
+    try {
+      await api.watchlist.deleteGroup(id)
+      onChanged()
+    } catch (error) {
+      console.error('Failed to delete group:', error)
+    }
   }
 
   const handleMoveGroupUp = async (idx: number) => {
@@ -55,8 +63,12 @@ export function WatchlistManageOverlay({
     const temp = sorted[idx - 1]
     sorted[idx - 1] = sorted[idx]
     sorted[idx] = temp
-    await Promise.all(sorted.map((g, i) => api.watchlist.updateGroup(g.id, { sort_order: i })))
-    onChanged()
+    try {
+      await Promise.all(sorted.map((g, i) => api.watchlist.updateGroup(g.id, { sort_order: i })))
+      onChanged()
+    } catch (error) {
+      console.error('Failed to reorder groups:', error)
+    }
   }
 
   const handleMoveGroupDown = async (idx: number) => {
@@ -65,26 +77,42 @@ export function WatchlistManageOverlay({
     const temp = sorted[idx + 1]
     sorted[idx + 1] = sorted[idx]
     sorted[idx] = temp
-    await Promise.all(sorted.map((g, i) => api.watchlist.updateGroup(g.id, { sort_order: i })))
-    onChanged()
+    try {
+      await Promise.all(sorted.map((g, i) => api.watchlist.updateGroup(g.id, { sort_order: i })))
+      onChanged()
+    } catch (error) {
+      console.error('Failed to reorder groups:', error)
+    }
   }
 
   const handleDeleteItem = async (itemId: number) => {
-    await api.watchlist.removeItem(itemId)
-    onChanged()
+    try {
+      await api.watchlist.removeItem(itemId)
+      onChanged()
+    } catch (error) {
+      console.error('Failed to delete item:', error)
+    }
   }
 
   const handleMoveItem = async (itemId: number, targetGroupId: number) => {
-    await api.watchlist.updateItem(itemId, { group_id: targetGroupId })
-    onChanged()
+    try {
+      await api.watchlist.updateItem(itemId, { group_id: targetGroupId })
+      onChanged()
+    } catch (error) {
+      console.error('Failed to move item:', error)
+    }
   }
 
   const handleCreateGroup = async () => {
     if (!newGroupInput.trim()) return
-    await api.watchlist.createGroup(newGroupInput.trim())
-    setNewGroupInput('')
-    setShowNewGroup(false)
-    onChanged()
+    try {
+      await api.watchlist.createGroup(newGroupInput.trim())
+      setNewGroupInput('')
+      setShowNewGroup(false)
+      onChanged()
+    } catch (error) {
+      console.error('Failed to create group:', error)
+    }
   }
 
   return (

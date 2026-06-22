@@ -32,20 +32,32 @@ export function WatchlistPage() {
     }
   }, [])
 
-  useEffect(() => { fetchGroups() }, [fetchGroups])
+  useEffect(() => {
+    const load = async () => {
+      await fetchGroups()
+    }
+    load()
+  }, [fetchGroups])
 
   useEffect(() => {
-    if (!selectedCode) { setStockDetail(null); return }
+    if (!selectedCode) return
     let cancelled = false
-    setDetailLoading(true)
-    api.stockDetail(selectedCode)
-      .then((d) => { if (!cancelled) setStockDetail(d) })
-      .catch(() => { if (!cancelled) setStockDetail(null) })
-      .finally(() => { if (!cancelled) setDetailLoading(false) })
+    const load = async () => {
+      setDetailLoading(true)
+      try {
+        const d = await api.stockDetail(selectedCode)
+        if (!cancelled) setStockDetail(d)
+      } catch {
+        if (!cancelled) setStockDetail(null)
+      } finally {
+        if (!cancelled) setDetailLoading(false)
+      }
+    }
+    load()
     return () => { cancelled = true }
   }, [selectedCode])
 
-  const handleSelectStock = useCallback((code: string, _name: string) => {
+  const handleSelectStock = useCallback((code: string) => {
     setSelectedCode(code)
     setMobileDetailOpen(true)
   }, [])
