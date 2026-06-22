@@ -1,7 +1,7 @@
 from typing import Optional
 
-from sqlalchemy import Float, Integer, String, Boolean, UniqueConstraint, Index
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Float, Integer, String, Boolean, UniqueConstraint, Index, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
@@ -177,6 +177,25 @@ class ResearchReport(Base):
     __table_args__ = (Index("ix_research_reports_code_date", "code", "published_at"),)
 
 
+class IndustryResearchReport(Base):
+    __tablename__ = "industry_research_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    report_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    industry: Mapped[str] = mapped_column(String, index=True)
+    title: Mapped[str] = mapped_column(String)
+    org: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    published_at: Mapped[str] = mapped_column(String, index=True)
+    summary: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    pdf_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    pdf_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    content_text: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    stage: Mapped[str] = mapped_column(String, default="metadata")
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    __table_args__ = (Index("ix_industry_research_reports_industry_date", "industry", "published_at"),)
+
+
 class ScreenSnapshot(Base):
     __tablename__ = "screen_snapshots"
 
@@ -221,3 +240,31 @@ class RefreshStepState(Base):
     total: Mapped[int] = mapped_column(Integer, default=0)
     elapsed: Mapped[str] = mapped_column(String, default="00:00")
     progress: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class WatchlistGroup(Base):
+    __tablename__ = "watchlist_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    items: Mapped[list["WatchlistItem"]] = relationship(
+        "WatchlistItem", back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class WatchlistItem(Base):
+    __tablename__ = "watchlist_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(Integer, ForeignKey("watchlist_groups.id"), nullable=False)
+    stock_code: Mapped[str] = mapped_column(String, nullable=False)
+    stock_name: Mapped[str] = mapped_column(String, nullable=False)
+    industry: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    strategy_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    added_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    group: Mapped["WatchlistGroup"] = relationship("WatchlistGroup", back_populates="items")
+
+    __table_args__ = (UniqueConstraint("group_id", "stock_code", name="uq_watchlist_item"),)
