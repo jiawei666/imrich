@@ -57,6 +57,7 @@ export interface ResearchReport {
   org: string
   date: string
   pdfUrl?: string | null
+  industry?: string | null
 }
 
 export interface RiskItem {
@@ -80,6 +81,7 @@ export interface StockDetail {
   klineQuarter: Kline[]
   highLine: number
   reports: ResearchReport[]
+  industryReports: ResearchReport[]
 }
 
 export type StrategyId =
@@ -169,6 +171,12 @@ export interface MetaResponse {
     stage2CandidateCount: number
     count: number
   }
+  industryResearchReports: {
+    stage1UpdatedAt: string | null
+    stage2UpdatedAt: string | null
+    stage2CandidateCount: number
+    count: number
+  }
 }
 
 export interface StockListItem {
@@ -246,4 +254,21 @@ export interface IndexInfo {
   indexCode: string
   indexName: string
   stockCodes: string[]
+}
+
+export interface WatchlistItem {
+  id: number
+  stock_code: string
+  stock_name: string
+  industry: string | null
+  strategy_id: string | null
+  sort_order: number
+  added_at: string
+}
+
+export interface WatchlistGroup {
+  id: number
+  name: string
+  sort_order: number
+  items: WatchlistItem[]
 }
