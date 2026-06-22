@@ -169,8 +169,13 @@ export const api = {
     updateGroup: (id: number, body: { name?: string; sort_order?: number }) =>
       patchJson<WatchlistGroup>(`/watchlist/groups/${id}`, body),
     deleteGroup: (id: number) => deleteReq(`/watchlist/groups/${id}`),
-    addItem: (body: { group_id: number; stock_code: string }) =>
-      postJson<WatchlistItem>('/watchlist/items', body),
+    addItem: (body: {
+      group_id?: number
+      stock_code: string
+      stock_name: string
+      industry?: string | null
+      strategy_id?: string
+    }) => postJson<WatchlistItem>('/watchlist/items', body),
     removeItem: (id: number) => deleteReq(`/watchlist/items/${id}`),
     updateItem: (id: number, body: { group_id?: number; sort_order?: number }) =>
       patchJson<WatchlistItem>(`/watchlist/items/${id}`, body),
