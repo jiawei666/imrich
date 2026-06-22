@@ -14,34 +14,40 @@ export function StockDetailPanel({
   candidate,
   onClose,
   loading,
+  onAddToWatchlist,
 }: {
   detail: StockDetail
   candidate?: Candidate | null
   onClose: () => void
   loading?: boolean
+  onAddToWatchlist?: (code: string, name: string, industry?: string) => void
 }) {
   return (
-    <Card className="relative flex h-full flex-col overflow-hidden">
+    <Card className="relative flex flex-col overflow-hidden 2xl:h-full">
       <LoadingOverlay show={!!loading} />
       {/* header */}
-      <div className="flex items-center gap-3 border-b border-line-soft px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-3 py-3 sm:px-4">
         <button
           onClick={onClose}
           className="flex cursor-pointer items-center text-ink-faint transition-colors hover:text-ink"
         >
           <ArrowLeft className="size-5" />
         </button>
-        <div className="flex items-baseline gap-2.5">
+        <div className="flex min-w-0 items-baseline gap-2.5">
           <h2 className="text-lg font-bold text-ink">{detail.name}</h2>
           <span className="tnum text-sm text-ink-faint">{detail.code}</span>
         </div>
-        <span className="ml-1 text-[13px] text-ink-soft">
+        <span className="min-w-0 flex-1 text-[13px] text-ink-soft sm:ml-1">
           {detail.industry} · {detail.subIndustry}
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="sm">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAddToWatchlist?.(detail.code, detail.name, detail.industry || undefined)}
+          >
             <Star className="size-3.5" />
-            加入自选
+            <span className="hidden sm:inline">加入自选</span>
           </Button>
           <button
             onClick={onClose}
@@ -53,10 +59,10 @@ export function StockDetailPanel({
       </div>
 
       {/* scroll body */}
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div className="flex-1 space-y-3 overflow-visible px-3 py-3 sm:px-4 sm:py-4 2xl:overflow-y-auto">
 
         {candidate && (
-          <div className="flex items-center gap-3 rounded-[14px] border border-line-soft bg-paper px-3 py-2">
+          <div className="flex flex-col gap-2 rounded-[14px] border border-line-soft bg-paper px-3 py-2 sm:flex-row sm:items-center sm:gap-3">
             <div className="flex shrink-0 items-baseline gap-1.5 border-r border-line-soft pr-3">
               <span className="text-xs text-ink-soft">综合得分</span>
               <span className="text-xl font-bold text-brand">{candidate.score.toFixed(1)}</span>
@@ -74,13 +80,15 @@ export function StockDetailPanel({
             <p className="tnum mt-1 text-[12px] text-ink-soft">{detail.latestNote}</p>
           </div>
           <div className="flex flex-col rounded-[14px] border border-line-soft bg-paper p-3">
-            <ResearchReports reports={detail.reports} />
+            <ResearchReports reports={detail.reports} industryReports={detail.industryReports} />
           </div>
         </div>
 
         <div className="rounded-[14px] border border-line-soft bg-paper p-3">
           <PriceChart
             stockName={detail.name}
+            stockCode={detail.code}
+            subTitle={`${detail.industry} · ${detail.subIndustry}`}
             klineDay={detail.klineDay}
             klineWeek={detail.klineWeek}
             klineMonth={detail.klineMonth}
