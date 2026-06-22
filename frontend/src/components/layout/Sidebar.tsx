@@ -15,34 +15,34 @@ export function Sidebar({
   active,
   onNavigate,
 }: {
-  active: 'home' | 'screen'
-  onNavigate: (key: 'home' | 'screen') => void
+  active: 'home' | 'screen' | 'watchlist'
+  onNavigate: (key: 'home' | 'screen' | 'watchlist') => void
 }) {
   return (
-    <aside className="flex w-[76px] shrink-0 flex-col items-center border-r border-line bg-paper/60 py-5">
-      <nav className="flex flex-1 flex-col items-center gap-1.5">
+    <aside className="fixed inset-x-0 bottom-0 z-50 flex h-16 border-t border-line bg-paper/95 px-2 py-1.5 shadow-[0_-8px_24px_-18px_rgba(43,58,77,0.35)] backdrop-blur lg:static lg:h-auto lg:w-[76px] lg:shrink-0 lg:flex-col lg:items-center lg:border-t-0 lg:border-r lg:bg-paper/60 lg:px-0 lg:py-5 lg:shadow-none lg:backdrop-blur-none">
+      <nav className="grid flex-1 grid-cols-6 items-center gap-1 lg:flex lg:flex-col lg:items-center lg:gap-1.5">
         {NAV.map(({ key, label, icon: Icon }) => {
           const on = key === active
           return (
             <button
               key={key}
               onClick={() => {
-                if (key === 'home' || key === 'screen') onNavigate(key)
+                if (key === 'home' || key === 'screen' || key === 'watchlist') onNavigate(key)
               }}
               className={cn(
-                'group flex w-[60px] cursor-pointer flex-col items-center gap-1 rounded-xl py-2 transition-colors duration-200',
+                'group flex min-w-0 cursor-pointer flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors duration-200 lg:w-[60px] lg:gap-1 lg:px-0 lg:py-2',
                 on
                   ? 'bg-brand-soft text-brand-strong'
                   : 'text-ink-faint hover:bg-paper-2 hover:text-ink'
               )}
             >
-              <Icon className="size-[19px]" strokeWidth={on ? 2.2 : 1.8} />
-              <span className="text-[11px] font-medium">{label}</span>
+              <Icon className="size-[18px] lg:size-[19px]" strokeWidth={on ? 2.2 : 1.8} />
+              <span className="max-w-full truncate text-[10px] font-medium lg:text-[11px]">{label}</span>
             </button>
           )
         })}
       </nav>
-      <div className="mt-4 w-[60px]">
+      <div className="mt-4 hidden w-[60px] lg:block">
         <Wordmark className="w-full" />
       </div>
     </aside>

@@ -6,8 +6,10 @@ import { FundamentalCandidateListCard } from '@/components/screener/FundamentalC
 import { StockDetailPanel } from '@/components/detail/StockDetailPanel'
 import { TechnicalScreenView, type TechnicalScreenViewHandle } from '@/components/technical/TechnicalScreenView'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AddToWatchlistModal } from '@/components/watchlist/AddToWatchlistModal'
 import { STOCK_DETAIL } from '@/data/mock'
 import { api } from '@/lib/api'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { STRATEGY_CATEGORY, type Candidate, type IndexInfo, type Preset, type StockDetail, type StrategyId } from '@/types'
 
 export interface ScreenPageHandle {
@@ -33,11 +35,25 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
     const [indexList, setIndexList] = useState<IndexInfo[]>([])
     const [indexConstituentMap, setIndexConstituentMap] = useState<Record<string, Set<string>>>({})
     const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
+    const [detailOpen, setDetailOpen] = useState(false)
+    const [watchlistModalOpen, setWatchlistModalOpen] = useState(false)
+    const [watchlistModalStock, setWatchlistModalStock] = useState<{
+      code: string
+      name: string
+      industry?: string
+      strategyId?: string
+    } | null>(null)
+
+    const handleAddToWatchlist = useCallback((code: string, name: string, industry?: string) => {
+      setWatchlistModalStock({ code, name, industry, strategyId: strategy })
+      setWatchlistModalOpen(true)
+    }, [strategy])
 
     const technicalRef = useRef<TechnicalScreenViewHandle>(null)
 
     const isTechnical = STRATEGY_CATEGORY[strategy] === 'technical'
     const activePreset = presets.find((p) => p.id === strategy) ?? null
+    const isDesktop = useMediaQuery('(min-width: 1024px)')
 
     useImperativeHandle(ref, () => ({
       toggleFilter: () => {
@@ -82,6 +98,7 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
       const defaults = Object.fromEntries(preset.params.map((p) => [p.key, p.value]))
       setParamValues(defaults)
       setSelectedCandidate(null)
+      setDetailOpen(false)
       setScreening(true)
       try {
         const res = await api.screenFundamentalResult(preset.id)
@@ -121,6 +138,7 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
     useEffect(() => {
       if (!isTechnical && activePreset) {
         setFilterOpen(false)
+        setDetailOpen(false)
         loadFundamentalCached(activePreset)
         loadIndexData()
       }
@@ -149,9 +167,10 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
             ref={technicalRef}
             strategy={strategy}
             preset={activePreset}
+            onAddToWatchlist={handleAddToWatchlist}
           />
         ) : (
-          <div className="relative flex flex-1 overflow-hidden">
+          <div className="relative flex flex-1 overflow-visible lg:overflow-hidden">
             <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} title={activePreset?.name ?? '筛选参数'}>
               {activePreset && (
                 <FilterPanel
@@ -164,37 +183,70 @@ export const ScreenPage = forwardRef<ScreenPageHandle, { strategy: StrategyId }>
               )}
             </FilterDrawer>
 
-            <main className="grid flex-1 grid-cols-1 gap-5 overflow-hidden p-6 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
-              <div className="flex min-h-0 flex-col">
+            <main className="grid min-w-0 flex-1 grid-cols-1 gap-4 overflow-visible p-4 sm:gap-5 sm:p-6 lg:overflow-y-auto 2xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
+              <div className="flex min-h-0 min-w-0 flex-col">
                 <FundamentalCandidateListCard
                   items={screenItems}
                   total={screenTotal}
                   updatedAt={screenUpdatedAt}
                   selectedCode={selectedCode}
-                  onSelectCode={(code) => { setSelectedCode(code); setSelectedCandidate(screenItems.find(i => i.code === code) ?? null) }}
+                  onSelectCode={(code) => {
+                    setSelectedCode(code)
+                    setSelectedCandidate(screenItems.find(i => i.code === code) ?? null)
+                    setDetailOpen(true)
+                  }}
                   indices={indexList}
                   indexConstituentMap={indexConstituentMap}
                   showDrawdown={strategy === 'oversold-bluechip'}
                   loading={screening || presetsLoading}
                 />
               </div>
-              <div className="overflow-y-auto">
-                {selectedCode && detailError && <div className="mb-3 text-sm text-red-600">{detailError}</div>}
-                {selectedCode ? (
-                  <StockDetailPanel
-                    detail={stockDetail}
-                    candidate={selectedCandidate}
-                    onClose={() => setSelectedCode('')}
-                    loading={detailLoading}
-                  />
-                ) : (
-                  <Card className="flex h-full items-center justify-center text-sm text-ink-faint">
-                    请选择候选股票查看详情
-                  </Card>
-                )}
-              </div>
+              {isDesktop && (
+                <div className="min-w-0 overflow-visible 2xl:overflow-y-auto">
+                  {selectedCode && detailError && <div className="mb-3 text-sm text-red-600">{detailError}</div>}
+                  {selectedCode ? (
+                    <StockDetailPanel
+                      detail={stockDetail}
+                      candidate={selectedCandidate}
+                      onClose={() => setSelectedCode('')}
+                      loading={detailLoading}
+                      onAddToWatchlist={handleAddToWatchlist}
+                    />
+                  ) : (
+                    <Card className="flex min-h-40 items-center justify-center text-sm text-ink-faint 2xl:h-full">
+                      请选择候选股票查看详情
+                    </Card>
+                  )}
+                </div>
+              )}
             </main>
+            {!isDesktop && selectedCode && detailOpen && (
+              <div
+                data-mobile-detail-overlay
+                className="fixed inset-0 z-[70] overflow-y-auto bg-cream p-3 lg:hidden"
+              >
+                {detailError && <div className="mb-3 text-sm text-red-600">{detailError}</div>}
+                <StockDetailPanel
+                  detail={stockDetail}
+                  candidate={selectedCandidate}
+                  onClose={() => setDetailOpen(false)}
+                  loading={detailLoading}
+                  onAddToWatchlist={handleAddToWatchlist}
+                />
+              </div>
+            )}
           </div>
+        )}
+        {watchlistModalOpen && watchlistModalStock && (
+          <AddToWatchlistModal
+            open={watchlistModalOpen}
+            stockCode={watchlistModalStock.code}
+            stockName={watchlistModalStock.name}
+            industry={watchlistModalStock.industry}
+            strategyId={watchlistModalStock.strategyId}
+            onClose={() => setWatchlistModalOpen(false)}
+            onAdded={() => {}}
+          />
         )}
       </div>
     )
