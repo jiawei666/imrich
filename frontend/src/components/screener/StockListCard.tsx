@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
-import { ArrowUpDown, ArrowUp, ArrowDown, Loader2, PackageOpen, RefreshCw, Search } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, Loader2, PackageOpen, Pin, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -77,6 +77,8 @@ interface StockListCardProps {
   error?: string | null
   /** 重试回调 */
   onRetry?: () => void
+  /** 置顶回调（提供时每行显示置顶按钮） */
+  onPinCode?: (code: string) => void
 }
 
 export function StockListCard({
@@ -100,6 +102,7 @@ export function StockListCard({
   onClearHistory,
   error,
   onRetry,
+  onPinCode,
 }: StockListCardProps) {
   // ---- 搜索 ----
   const [searchQuery, setSearchQuery] = useState('')
@@ -262,6 +265,7 @@ export function StockListCard({
                     <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-16" /></td>
                     <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
                     <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
+                    {onPinCode && <td className="w-8" />}
                   </tr>
                 ))}
               </tbody>
@@ -321,6 +325,7 @@ export function StockListCard({
                   </th>
                   <th className="px-2 pb-2 text-right font-medium">收盘价</th>
                   <th className="px-2 pb-2 text-right font-medium">涨跌幅</th>
+                  {onPinCode && <th className="w-8" />}
                 </tr>
               </thead>
               <tbody>
@@ -342,6 +347,17 @@ export function StockListCard({
                       <td className="tnum px-2 py-2.5 text-right text-[13px] text-ink-soft">{fmtCap(s.market_cap)}</td>
                       <td className="tnum px-2 py-2.5 text-right text-sm text-ink">{fmtClose(s.close)}</td>
                       <td className="tnum px-2 py-2.5 text-right text-[13px]">{fmtPctChg(s.pct_chg)}</td>
+                      {onPinCode && (
+                        <td className="px-1 py-2.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onPinCode(s.code) }}
+                            title="置顶"
+                            className="flex size-6 items-center justify-center rounded text-ink-faint/40 transition-colors hover:bg-paper-2 hover:text-ink-soft"
+                          >
+                            <Pin className="size-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}

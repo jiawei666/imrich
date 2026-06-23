@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { WatchlistGroupPanel } from '@/components/watchlist/WatchlistGroupPanel'
 import { AddToWatchlistModal } from '@/components/watchlist/AddToWatchlistModal'
 import { StockListCard } from '@/components/screener/StockListCard'
@@ -26,14 +26,30 @@ export function WatchlistPage() {
   const [modalState, setModalState] = useState<WatchlistModalState | null>(null)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
 
+  // 同步访问最新 groups（在回调中使用，不触发重渲）
+  const groupsRef = useRef<WatchlistGroup[]>([])
+  const initializedRef = useRef(false)
+
   const fetchGroups = useCallback(async () => {
     try {
       const gs = await api.watchlist.groups()
+      groupsRef.current = gs
       setGroups(gs)
-      setSelectedGroupId((prev) => {
-        if (prev != null && gs.some((g) => g.id === prev)) return prev
-        return gs[0]?.id ?? null
-      })
+
+      if (!initializedRef.current && gs.length > 0) {
+        // 首次加载：自动选中第一分组 + 第一只股票
+        initializedRef.current = true
+        const firstGroup = gs[0]
+        setSelectedGroupId(firstGroup.id)
+        const firstCode = firstGroup.items[0]?.stock_code ?? ''
+        if (firstCode) setSelectedCode(firstCode)
+      } else {
+        // 操作后刷新：保持当前选中分组（如被删除则回退到第一个）
+        setSelectedGroupId((prev) => {
+          if (prev != null && gs.some((g) => g.id === prev)) return prev
+          return gs[0]?.id ?? null
+        })
+      }
     } catch {
       setGroups([])
     }
@@ -41,9 +57,12 @@ export function WatchlistPage() {
 
   useEffect(() => { fetchGroups() }, [fetchGroups])
 
+  // 切换分组：自动选中该分组第一只股票
   const handleSelectGroup = useCallback((id: number) => {
     setSelectedGroupId(id)
-    setSelectedCode('')
+    const group = groupsRef.current.find((g) => g.id === id)
+    const firstCode = group?.items[0]?.stock_code ?? ''
+    setSelectedCode(firstCode)
     setStockDetail(null)
     setMobileChartOpen(false)
   }, [])
@@ -58,6 +77,7 @@ export function WatchlistPage() {
     pct_chg: null,
   }))
 
+  // 加载股票详情
   useEffect(() => {
     if (!selectedCode) { setStockDetail(null); return }
     let cancelled = false
@@ -73,6 +93,19 @@ export function WatchlistPage() {
     setSelectedCode(code)
     setMobileChartOpen(true)
   }, [])
+
+  // 置顶：将当前分组内指定股票的 sort_order 移到最小值 - 1
+  const handlePinCode = useCallback(async (code: string) => {
+    const group = groupsRef.current.find((g) => g.id === selectedGroupId)
+    if (!group) return
+    const item = group.items.find((i) => i.stock_code === code)
+    if (!item) return
+    const minOrder = group.items.reduce((m, i) => Math.min(m, i.sort_order), 0)
+    try {
+      await api.watchlist.updateItem(item.id, { sort_order: minOrder - 1 })
+      fetchGroups()
+    } catch { /* ignore */ }
+  }, [selectedGroupId, fetchGroups])
 
   const handleAddToWatchlist = useCallback((code: string, name: string, industry?: string) => {
     setModalState({ code, name, industry })
@@ -98,6 +131,7 @@ export function WatchlistPage() {
               loadingMore={false}
               selectedCode={selectedCode}
               onSelectCode={handleSelectCode}
+              onPinCode={handlePinCode}
             />
           </div>
           {isDesktop && selectedCode && (
