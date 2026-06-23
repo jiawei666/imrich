@@ -8,12 +8,18 @@ i'mRich 选股器：A 股选股工具。后端基于 akshare/东方财富/新浪
 
 ## 常用命令
 
+### 一键启动（推荐）
+
+```bash
+./dev.sh   # 同时启动后端（:8311）和前端（:5173），Ctrl+C 一并停止
+```
+
 ### 后端（`backend/`，FastAPI + SQLAlchemy）
 
 ```bash
 cd backend
 source venv/bin/activate              # 已有 venv；或 python -m venv venv && pip install -r requirements.txt
-uvicorn app.main:app --reload         # 启动 API（默认 http://localhost:8000）
+uvicorn app.main:app --reload --port 8311  # 启动 API（http://localhost:8311）
 pytest                                # 全部测试
 pytest tests/test_screen.py           # 单个文件
 pytest tests/test_screen.py::test_xxx # 单个用例
@@ -33,7 +39,7 @@ npm run build     # tsc -b 类型检查 + vite build
 npm run lint      # eslint
 ```
 
-- API 基址由 `VITE_API_BASE` 决定，默认 `http://localhost:8000`。
+- API 基址由 `VITE_API_BASE` 决定，默认 `http://localhost:8311`。
 - 路径别名 `@` → `frontend/src`（见 `vite.config.ts`）。
 
 ## 架构要点
