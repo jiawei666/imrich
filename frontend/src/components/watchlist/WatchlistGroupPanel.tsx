@@ -1,94 +1,187 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Star } from 'lucide-react'
+import { Plus, PenLine, Trash2, Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { api } from '@/lib/api'
 import type { WatchlistGroup } from '@/types'
 
-interface WatchlistGroupPanelProps {
+interface Props {
   groups: WatchlistGroup[]
-  selectedCode: string | null
-  onSelectStock: (code: string, name: string) => void
+  selectedGroupId: number | null
+  onSelectGroup: (id: number) => void
+  onChanged: () => void
 }
 
-export function WatchlistGroupPanel({
-  groups,
-  selectedCode,
-  onSelectStock,
-}: WatchlistGroupPanelProps) {
-  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({})
+function GroupItem({
+  group,
+  active,
+  onSelect,
+  onChanged,
+}: {
+  group: WatchlistGroup
+  active: boolean
+  onSelect: (id: number) => void
+  onChanged: () => void
+}) {
+  const [hovering, setHovering] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(group.name)
 
-  const totalCount = groups.reduce((sum, g) => sum + g.items.length, 0)
+  const handleRename = async () => {
+    const trimmed = editName.trim()
+    if (!trimmed || trimmed === group.name) { setEditing(false); return }
+    try {
+      await api.watchlist.updateGroup(group.id, { name: trimmed })
+      onChanged()
+    } catch { /* ignore */ }
+    setEditing(false)
+  }
 
-  const toggleGroup = (id: number) =>
-    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }))
+  const handleDelete = async () => {
+    if (!confirm(`删除"${group.name}"及其中所有股票？`)) return
+    try {
+      await api.watchlist.deleteGroup(group.id)
+      onChanged()
+    } catch { /* ignore */ }
+  }
+
+  const startEdit = () => {
+    setEditName(group.name)
+    setEditing(true)
+  }
 
   return (
-    <div className="flex h-full flex-col border-r border-line bg-paper/40">
-      {/* header */}
-      <div className="flex shrink-0 items-center border-b border-line-soft px-4 py-3">
-        <h2 className="text-[14px] font-semibold text-ink">自选股</h2>
-      </div>
+    <div
+      className="flex shrink-0 items-center gap-0.5"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => { if (!editing) setHovering(false) }}
+    >
+      {editing ? (
+        <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-brand bg-paper-2/50 px-2 py-1.5">
+          <input
+            autoFocus
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename()
+              if (e.key === 'Escape') { setEditing(false); setHovering(false) }
+            }}
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink focus:outline-none"
+          />
+          <button onClick={handleRename} className="shrink-0 text-brand hover:text-brand-strong">
+            <Check className="size-3" />
+          </button>
+          <button onClick={() => { setEditing(false); setHovering(false) }} className="shrink-0 text-ink-faint hover:text-ink">
+            <X className="size-3" />
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => onSelect(group.id)}
+          className={cn(
+            'flex min-w-max flex-1 items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors',
+            active
+              ? 'bg-brand-soft font-medium text-brand-strong'
+              : 'text-ink-soft hover:bg-paper-2 hover:text-ink',
+          )}
+        >
+          <span>{group.name}</span>
+          <span className={cn('ml-2 shrink-0 text-[11px]', active ? 'text-brand/70' : 'text-ink-faint/60')}>
+            {group.items.length}
+          </span>
+        </button>
+      )}
 
-      {/* group list */}
-      <div className="flex-1 overflow-y-auto">
-        {groups.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-12 text-center">
-            <Star className="size-7 text-ink-faint/50" strokeWidth={1.5} />
-            <p className="text-sm text-ink-faint">暂无自选股</p>
-            <p className="text-[12px] text-ink-faint/70">在选股页点击"加入自选"添加</p>
-          </div>
-        ) : (
-          groups.map((group) => {
-            const isCollapsed = !!collapsed[group.id]
-            return (
-              <div key={group.id}>
-                <button
-                  onClick={() => toggleGroup(group.id)}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-paper-2/50"
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="size-3.5 shrink-0 text-ink-faint" />
-                  ) : (
-                    <ChevronDown className="size-3.5 shrink-0 text-ink-faint" />
-                  )}
-                  <span className="flex-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {group.name}
-                  </span>
-                  <span className="text-[11px] text-ink-faint/60">{group.items.length}</span>
-                </button>
-                {!isCollapsed &&
-                  group.items.map((item) => {
-                    const on = item.stock_code === selectedCode
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => onSelectStock(item.stock_code, item.stock_name)}
-                        className={cn(
-                          'flex w-full items-start gap-2 px-4 py-2.5 text-left transition-colors hover:bg-paper-2/70',
-                          on && 'bg-brand-soft',
-                        )}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[13px] font-semibold text-ink">
-                            {item.stock_name}
-                          </div>
-                          <div className="flex gap-2 text-[11px] text-ink-faint">
-                            <span className="tnum">{item.stock_code}</span>
-                            {item.industry && <span>{item.industry}</span>}
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })}
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      {/* footer */}
-      <div className="shrink-0 border-t border-line-soft px-4 py-2 text-[12px] text-ink-faint">
-        共 {totalCount} 只
-      </div>
+      {!editing && (
+        <div className={cn(
+          'flex shrink-0 gap-0.5 transition-opacity duration-150',
+          hovering ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}>
+          <button
+            onClick={(e) => { e.stopPropagation(); startEdit() }}
+            className="rounded-md p-1.5 text-ink-faint hover:bg-paper-2 hover:text-ink"
+            title="重命名"
+          >
+            <PenLine className="size-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleDelete() }}
+            className="rounded-md p-1.5 text-ink-faint hover:bg-red-50 hover:text-red-500"
+            title="删除分组"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      )}
     </div>
+  )
+}
+
+function NewGroupInput({ onCreated }: { onCreated: () => void }) {
+  const [show, setShow] = useState(false)
+  const [name, setName] = useState('')
+
+  const handleCreate = async () => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    try {
+      await api.watchlist.createGroup(trimmed)
+      onCreated()
+    } catch { /* ignore */ }
+    setName('')
+    setShow(false)
+  }
+
+  if (!show) {
+    return (
+      <button
+        onClick={() => setShow(true)}
+        className="flex min-w-max shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] text-ink-faint transition-colors hover:bg-paper-2 hover:text-ink"
+      >
+        <Plus className="size-3.5" />
+        新建分组
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 shrink-0 items-center gap-1 rounded-lg border border-brand bg-paper-2/50 px-2 py-1.5">
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleCreate()
+          if (e.key === 'Escape') { setShow(false); setName('') }
+        }}
+        placeholder="分组名称…"
+        className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-none"
+      />
+      <button onClick={handleCreate} disabled={!name.trim()} className="shrink-0 text-brand disabled:opacity-40 hover:text-brand-strong">
+        <Check className="size-3" />
+      </button>
+      <button onClick={() => { setShow(false); setName('') }} className="shrink-0 text-ink-faint hover:text-ink">
+        <X className="size-3" />
+      </button>
+    </div>
+  )
+}
+
+export function WatchlistGroupPanel({ groups, selectedGroupId, onSelectGroup, onChanged }: Props) {
+  return (
+    <aside className="sticky top-0 z-40 flex min-w-0 gap-2 overflow-x-auto border-b border-line bg-cream/90 px-3 py-2 backdrop-blur lg:static lg:w-[180px] lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-x-visible lg:border-b-0 lg:border-r lg:bg-paper/40 lg:px-3 lg:py-5 lg:backdrop-blur-none">
+      <div className="hidden px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint lg:block">
+        自选分组
+      </div>
+      {groups.map((group) => (
+        <GroupItem
+          key={group.id}
+          group={group}
+          active={selectedGroupId === group.id}
+          onSelect={onSelectGroup}
+          onChanged={onChanged}
+        />
+      ))}
+      <NewGroupInput onCreated={onChanged} />
+    </aside>
   )
 }
