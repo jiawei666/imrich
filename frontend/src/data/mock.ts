@@ -145,6 +145,14 @@ export const STOCK_DETAIL: StockDetail = {
       date: '2025-06-05',
     },
   ],
+  industryReports: [
+    {
+      title: '锂电池行业：储能需求与材料降本共振',
+      org: '中信证券',
+      date: '2025-06-10',
+      industry: '锂电池',
+    },
+  ],
 }
 
 export const REFRESH_STATUS: RefreshStatus = {
@@ -166,6 +174,7 @@ export const REFRESH_STATUS: RefreshStatus = {
       { label: '业绩预告快报', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
       { label: '申万行业指数', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
       { label: '研报元数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
+      { label: '产业研报元数据', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
       { label: '研报PDF解析', status: 'idle', error: null, done: 0, total: 0, elapsed: '00:00', progress: 0 },
     ],
   },

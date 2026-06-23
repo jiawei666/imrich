@@ -27,6 +27,8 @@ export function latestMetaUpdateFull(meta: MetaResponse | undefined): string | n
     meta.industryIndex.updatedAt,
     meta.researchReports.stage1UpdatedAt,
     meta.researchReports.stage2UpdatedAt,
+    meta.industryResearchReports.stage1UpdatedAt,
+    meta.industryResearchReports.stage2UpdatedAt,
   ].filter((x): x is string => !!x)
   if (all.length === 0) return null
   // 时间串均为年份在前（"YYYY-MM-DD" 或 "YYYY-MM-DD HH:MM:SS"），字典序即时间序
@@ -116,15 +118,26 @@ export const TASKS: RefreshTaskConfig[] = [
     dependsOn: ['stock-list'],
   },
   {
+    key: 'industry-research-meta',
+    label: '产业研报元数据',
+    shortLabel: '产业研报',
+    description: '按产业归集研报标题、机构、发布日期等元信息',
+    icon: FileSearch,
+    step: (s) => s.fundamental.steps[4],
+    updatedAt: (m) => m.industryResearchReports.stage1UpdatedAt,
+    trigger: () => api.refreshFundamentalStep('industry-research-meta'),
+    dependsOn: ['research-meta'],
+  },
+  {
     key: 'research-pdfs',
     label: '研报PDF解析',
     shortLabel: '研报PDF',
-    description: '下载并解析候选股研报全文（依赖研报元数据）',
+    description: '下载并解析个股与产业研报全文',
     icon: FileDown,
-    step: (s) => s.fundamental.steps[4],
-    updatedAt: (m) => m.researchReports.stage2UpdatedAt,
+    step: (s) => s.fundamental.steps[5],
+    updatedAt: (m) => m.researchReports.stage2UpdatedAt || m.industryResearchReports.stage2UpdatedAt,
     trigger: () => api.refreshFundamentalStep('research-pdfs'),
-    dependsOn: ['research-meta'],
+    dependsOn: ['industry-research-meta'],
   },
 ]
 
