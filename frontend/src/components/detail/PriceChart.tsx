@@ -20,6 +20,20 @@ const PERIODS: { key: KlineTimeframe; label: string }[] = [
 
 const INITIAL_SHOW: Record<KlineTimeframe, number> = { day: 90, week: 52, month: 36, quarter: 20 }
 
+function getLatestDayQuote(data: Kline[]) {
+  const latest = data.at(-1)
+  if (!latest) return null
+  const prev = data.at(-2)
+  const pctChg = prev && prev.close !== 0
+    ? ((latest.close - prev.close) / prev.close) * 100
+    : null
+  return { close: latest.close, pctChg }
+}
+
+function formatPctChg(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
 // 统一的 grid left 值，保证多图对齐
 const GRID_LEFT = 8
 const GRID_RIGHT = 60
@@ -249,6 +263,7 @@ function ChartBody({
     boundaryGap: true,
     axisLine: { lineStyle: { color: '#e9e0c9' } },
     axisTick: { show: false },
+    axisPointer: { lineStyle: { type: 'dashed' as const, color: '#8b96a1', width: 1 } },
   }
 
   const labelInterval = Math.max(Math.floor(data.length / 8), 0)
@@ -318,16 +333,19 @@ function ChartBody({
     const priceAxis = {
       scale: true, position: 'right' as const, splitLine: { lineStyle: { color: '#f0e8d4' } },
       axisLabel: { color: INK_SOFT, fontSize: 10, width: 50, overflow: 'truncate' as const },
+      axisPointer: { show: true, lineStyle: { type: 'dashed' as const, color: '#8b96a1', width: 1 } },
     }
     const volumeAxis = {
       position: 'right' as const, splitNumber: 2, splitLine: { show: false },
       axisLabel: { color: INK_SOFT, fontSize: 10, width: 50, overflow: 'truncate' as const,
         formatter: (v: number) => v >= 10000 ? `${(v/10000).toFixed(0)}万` : String(Math.round(v)) },
+      axisPointer: { show: true, lineStyle: { type: 'dashed' as const, color: '#8b96a1', width: 1 } },
     }
     const kdjAxis = {
       scale: true, position: 'right' as const, splitNumber: 2,
       splitLine: { lineStyle: { color: '#f0e8d4' } },
       axisLabel: { color: INK_SOFT, fontSize: 10, width: 50, overflow: 'truncate' as const },
+      axisPointer: { show: true, lineStyle: { type: 'dashed' as const, color: '#8b96a1', width: 1 } },
     }
 
     if (hasKdj && hasVolume) {
@@ -384,7 +402,11 @@ function ChartBody({
     tooltip: {
       trigger: 'axis',
       triggerOn: 'mousemove',
-      axisPointer: { type: asLine ? 'line' : 'cross' },
+      axisPointer: {
+        type: 'cross',
+        lineStyle: { type: 'dashed', color: '#8b96a1', width: 1 },
+        crossStyle: { type: 'dashed', color: '#8b96a1', width: 1 },
+      },
       backgroundColor: '#fffdf7',
       borderColor: '#e9e0c9',
       textStyle: { color: '#2b3a4d', fontSize: 12 },
@@ -476,13 +498,30 @@ export function PriceChart({
   const dataMap: Record<KlineTimeframe, Kline[]> = {
     day: klineDay, week: klineWeek, month: klineMonth, quarter: klineQuarter,
   }
+  const latestDayQuote = getLatestDayQuote(klineDay)
+  const quoteColor = latestDayQuote?.pctChg == null
+    ? 'text-ink-soft'
+    : latestDayQuote.pctChg > 0
+      ? 'text-up'
+      : latestDayQuote.pctChg < 0
+        ? 'text-down'
+        : 'text-ink-soft'
+
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <div className="flex items-baseline gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="text-[15px] font-semibold text-ink">{stockName ?? '股价走势'}</span>
           {stockCode && <span className="tnum text-sm text-ink-faint">{stockCode}</span>}
           {subTitle && <span className="text-[13px] text-ink-soft">{subTitle}</span>}
+          {latestDayQuote && (
+            <span className={`tnum text-sm font-semibold ${quoteColor}`}>
+              {latestDayQuote.close.toFixed(2)}
+              {latestDayQuote.pctChg != null && (
+                <span className="ml-1">{formatPctChg(latestDayQuote.pctChg)}</span>
+              )}
+            </span>
+          )}
         </div>
         <Tabs value={period} onValueChange={(v) => setPeriod(v as KlineTimeframe)}>
           <TabsList className="h-7 p-0.5">
