@@ -4,9 +4,38 @@ import pandas as pd
 
 from app.db import SessionLocal
 from app.indicators import compute_kdj, compute_zhixing_short_trend, compute_zhixing_bull_bear
-from app.models import FinancialReport, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
+from app.models import FinancialReport, IndustryResearchReport, KlineDay, KlineMonth, KlineQuarter, KlineWeek, ResearchReport, Stock
 from app.signals import compute_single_quarter_series
 from fastapi import HTTPException
+
+INDUSTRY_REPORT_ALIASES: dict[str, list[str]] = {
+    "锂电池": ["电池"],
+    "农商行Ⅱ": ["银行Ⅱ", "银行"],
+    "国有大型银行Ⅱ": ["银行Ⅱ", "银行"],
+    "城商行Ⅱ": ["银行Ⅱ", "银行"],
+    "股份制银行Ⅱ": ["银行Ⅱ", "银行"],
+    "出版": ["文化传媒"],
+    "电视广播Ⅱ": ["文化传媒"],
+    "地面兵装Ⅱ": ["航空装备Ⅱ", "航天装备Ⅱ"],
+    "家电零部件Ⅱ": ["其他家电Ⅱ", "家电行业"],
+    "林业Ⅱ": ["农牧饲渔"],
+    "渔业": ["农牧饲渔"],
+    "焦炭Ⅱ": ["煤炭开采", "煤炭行业"],
+    "照明设备Ⅱ": ["光学光电子"],
+    "特钢Ⅱ": ["普钢", "钢铁行业"],
+    "调味发酵品Ⅱ": ["食品加工", "食品饮料"],
+}
+
+
+def _industry_report_names(sub_industry: str | None, parent_industry: str | None) -> list[str]:
+    names: list[str] = []
+    for name in (sub_industry, parent_industry):
+        if not name:
+            continue
+        names.append(name)
+        names.extend(INDUSTRY_REPORT_ALIASES.get(name, []))
+    seen = set()
+    return [name for name in names if not (name in seen or seen.add(name))]
 
 
 def _load_klines(code: str) -> dict:
@@ -96,6 +125,24 @@ def get_stock_detail(code: str):
         )
 
         parent_industry_name = stock.parent_industry
+        stock_reports = (
+            s.query(ResearchReport)
+            .filter_by(code=code)
+            .order_by(ResearchReport.published_at.desc())
+            .limit(10)
+            .all()
+        )
+        industry_report_rows = []
+        for industry_name in _industry_report_names(stock.industry, stock.parent_industry):
+            industry_report_rows = (
+                s.query(IndustryResearchReport)
+                .filter_by(industry=industry_name)
+                .order_by(IndustryResearchReport.published_at.desc())
+                .limit(10)
+                .all()
+            )
+            if industry_report_rows:
+                break
 
     def _quarter(report_date: str) -> str:
         y = report_date[:4]
@@ -135,10 +182,10 @@ def get_stock_detail(code: str):
         "highLine": high_line,
         "reports": [
             {"title": r.title, "org": r.org, "date": r.published_at, "pdfUrl": r.pdf_url}
-            for r in s.query(ResearchReport)
-            .filter_by(code=code)
-            .order_by(ResearchReport.published_at.desc())
-            .limit(10)
-            .all()
+            for r in stock_reports
+        ],
+        "industryReports": [
+            {"title": r.title, "org": r.org, "date": r.published_at, "pdfUrl": r.pdf_url, "industry": r.industry}
+            for r in industry_report_rows
         ],
     }

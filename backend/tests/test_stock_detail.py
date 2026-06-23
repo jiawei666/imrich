@@ -49,3 +49,62 @@ def test_get_stock_detail_industry_uses_parent_name(db_path):
     detail = get_stock_detail("sz000002")
     assert detail["industry"] == "电力设备"
     assert detail["subIndustry"] == "锂电池"
+
+
+def test_get_stock_detail_returns_industry_reports_for_sub_industry(db_path):
+    init_db()
+    from app.models import IndustryResearchReport
+
+    with SessionLocal() as s:
+        s.add(Stock(code="sz000003", name="测试股份", industry="锂电池", parent_industry="电力设备"))
+        s.add(IndustryResearchReport(
+            report_id="IR1",
+            industry="锂电池",
+            title="锂电池行业深度",
+            org="测试证券",
+            published_at="2026-06-02",
+            pdf_url="https://example.com/ir1.pdf",
+        ))
+        s.add(IndustryResearchReport(
+            report_id="IR2",
+            industry="电力设备",
+            title="电力设备行业策略",
+            org="测试证券",
+            published_at="2026-06-01",
+            pdf_url="https://example.com/ir2.pdf",
+        ))
+        s.commit()
+
+    detail = get_stock_detail("sz000003")
+
+    assert detail["industryReports"] == [
+        {
+            "title": "锂电池行业深度",
+            "org": "测试证券",
+            "date": "2026-06-02",
+            "pdfUrl": "https://example.com/ir1.pdf",
+            "industry": "锂电池",
+        }
+    ]
+
+
+def test_get_stock_detail_uses_industry_report_alias_when_sub_industry_differs(db_path):
+    init_db()
+    from app.models import IndustryResearchReport
+
+    with SessionLocal() as s:
+        s.add(Stock(code="sz000004", name="测试股份", industry="锂电池", parent_industry="电力设备"))
+        s.add(IndustryResearchReport(
+            report_id="IR-alias",
+            industry="电池",
+            title="电池行业深度",
+            org="测试证券",
+            published_at="2026-06-03",
+            pdf_url="https://example.com/battery.pdf",
+        ))
+        s.commit()
+
+    detail = get_stock_detail("sz000004")
+
+    assert detail["industryReports"][0]["title"] == "电池行业深度"
+    assert detail["industryReports"][0]["industry"] == "电池"

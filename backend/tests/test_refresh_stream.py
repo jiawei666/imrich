@@ -3,7 +3,7 @@ from datetime import datetime
 
 from app import refresh
 from app.db import SessionLocal
-from app.models import FinancialReport, Forecast, IndustryIndex, ResearchReport
+from app.models import FinancialReport, Forecast, IndustryIndex, IndustryResearchReport, ResearchReport
 
 
 def test_get_status_snapshot(client):
@@ -15,7 +15,7 @@ def test_get_status_snapshot(client):
     assert snapshot["kline"]["status"] == "idle"
     assert isinstance(snapshot["kline"]["steps"], list)
     assert len(snapshot["kline"]["steps"]) == 2
-    assert len(snapshot["fundamental"]["steps"]) == 5
+    assert len(snapshot["fundamental"]["steps"]) == 6
     assert len(snapshot["all"]["steps"]) == 0
     assert snapshot["all"]["status"] == "idle"
 
@@ -102,11 +102,11 @@ def test_load_research_pdfs_step_reflects_remaining_pending(client):
 
     refresh.load_state_from_db()
     snapshot = refresh.get_status_snapshot()
-    step4 = snapshot["fundamental"]["steps"][4]
-    assert step4["done"] == 1
-    assert step4["total"] == 4
-    assert step4["progress"] == 25
-    assert step4["status"] != "done"
+    step5 = snapshot["fundamental"]["steps"][5]
+    assert step5["done"] == 1
+    assert step5["total"] == 4
+    assert step5["progress"] == 25
+    assert step5["status"] != "done"
 
 
 def test_load_research_pdfs_step_as_done_when_no_pending(client):
@@ -120,8 +120,25 @@ def test_load_research_pdfs_step_as_done_when_no_pending(client):
 
     refresh.load_state_from_db()
     snapshot = refresh.get_status_snapshot()
-    step4 = snapshot["fundamental"]["steps"][4]
-    assert step4["done"] == 1
-    assert step4["total"] == 1
-    assert step4["progress"] == 100
-    assert step4["status"] == "done"
+    step5 = snapshot["fundamental"]["steps"][5]
+    assert step5["done"] == 1
+    assert step5["total"] == 1
+    assert step5["progress"] == 100
+    assert step5["status"] == "done"
+
+
+def test_load_research_pdfs_step_counts_industry_reports(client):
+    refresh.reset_state()
+
+    recent_date = datetime.now().strftime("%Y-%m-%d")
+    with SessionLocal() as s:
+        s.add(ResearchReport(report_id="R1", code="sz000001", title="t1", published_at=recent_date, stage="parsed"))
+        s.add(IndustryResearchReport(report_id="IR1", industry="锂电池", title="产业", published_at=recent_date, stage="metadata"))
+        s.commit()
+
+    refresh.load_state_from_db()
+    snapshot = refresh.get_status_snapshot()
+    step5 = snapshot["fundamental"]["steps"][5]
+    assert step5["done"] == 1
+    assert step5["total"] == 2
+    assert step5["progress"] == 50

@@ -48,6 +48,7 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     _migrate_forecasts_constraint(engine)
     _migrate_stocks_parent_industry(engine)
+    _migrate_industry_research_reports(engine)
 
 
 def _migrate_stocks_parent_industry(engine):
@@ -60,6 +61,30 @@ def _migrate_stocks_parent_industry(engine):
         if "parent_industry" in columns:
             return
         conn.execute(text("ALTER TABLE stocks ADD COLUMN parent_industry VARCHAR"))
+        conn.commit()
+
+
+def _migrate_industry_research_reports(engine):
+    """补齐产业研报表及 PDF 解析字段。"""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='industry_research_reports'"
+        ))
+        if result.fetchone() is None:
+            import app.models  # noqa: F401
+            Base.metadata.create_all(engine)
+            return
+
+        columns = {row[1] for row in conn.execute(text("PRAGMA table_info(industry_research_reports)")).fetchall()}
+        for name, ddl_type, default in (
+            ("pdf_path", "VARCHAR", None),
+            ("content_text", "VARCHAR", None),
+            ("stage", "VARCHAR", "'metadata'"),
+        ):
+            if name not in columns:
+                suffix = f" DEFAULT {default}" if default is not None else ""
+                conn.execute(text(f"ALTER TABLE industry_research_reports ADD COLUMN {name} {ddl_type}{suffix}"))
         conn.commit()
 
 

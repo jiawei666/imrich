@@ -20,6 +20,7 @@ from app.models import (
     FinancialReport,
     Forecast,
     Industry,
+    IndustryResearchReport,
     IndexConstituent,
     IndustryIndex,
     KlineDay,
@@ -78,6 +79,7 @@ def _new_state():
         "fundamental": RefreshGroup(steps=[
             RefreshStep("财报数据"), RefreshStep("业绩预告快报"),
             RefreshStep("行业与指数数据"), RefreshStep("研报元数据"),
+            RefreshStep("产业研报元数据"),
             RefreshStep("研报PDF解析")]),
         "all": RefreshGroup(),
     }
@@ -611,13 +613,83 @@ def run_research_meta_refresh(research_meta_fn=None):
         raise
 
 
+def refresh_industry_research_metadata(
+    fetch_fn: Callable[[], list[dict]],
+    group: Optional[RefreshGroup] = None,
+) -> None:
+    """抓取东方财富行业研报元数据并落库。"""
+    step = group.steps[4] if group is not None else None
+    rows = fetch_fn()
+    if step is not None:
+        step.total = len(rows)
+        step.done = 0
+        step.progress = 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with SessionLocal() as s, tqdm(total=len(rows), desc="产业研报元数据") as bar:
+        for row in rows:
+            industry = (row.get("industry") or "").strip()
+            if not industry:
+                continue
+            obj = s.query(IndustryResearchReport).filter_by(report_id=row["report_id"]).one_or_none()
+            if obj is None:
+                obj = IndustryResearchReport(
+                    report_id=row["report_id"],
+                    industry=industry,
+                    title=row["title"],
+                    published_at=row["published_at"],
+                    stage="metadata",
+                )
+                s.add(obj)
+                s.flush()
+            obj.industry = industry
+            obj.title = row["title"]
+            obj.org = row.get("org")
+            obj.published_at = row["published_at"]
+            obj.summary = row.get("summary")
+            obj.pdf_url = row.get("pdf_url")
+            if obj.stage != "parsed":
+                obj.stage = "metadata"
+            obj.updated_at = now
+            if step is not None:
+                step.done += 1
+                step.progress = int(step.done / step.total * 100) if step.total else 100
+            bar.update(1)
+        s.commit()
+    if step is not None:
+        step.progress = 100
+        step.elapsed = "00:00"
+
+
+def run_industry_research_meta_refresh(research_meta_fn=None):
+    """独立执行步骤5：产业研报元数据刷新。"""
+    if research_meta_fn is None:
+        from app.data.fetch_research import fetch_industry_research_metadata
+        research_meta_fn = fetch_industry_research_metadata
+    group = STATE["fundamental"]
+    step = group.steps[4]
+    if step.status == "running":
+        return
+    step.status = "running"
+    step.error = None
+    try:
+        refresh_industry_research_metadata(research_meta_fn, group=group)
+        step.status = "done"
+    except Exception as e:
+        step.status = "error"
+        step.error = str(e)
+        raise
+
+
 def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None, research_directory=None):
-    """独立执行步骤5：研报PDF解析刷新（近一年研报）。依赖步骤4完成。"""
+    """独立执行步骤6：研报PDF解析刷新（近一年个股研报 + 产业研报）。"""
     _backfill_state_from_db()
     group = STATE["fundamental"]
     step4 = group.steps[3]
+    step5 = group.steps[4]
     if step4.status != "done":
         raise RuntimeError("请先刷新研报元数据")
+    if step5.status != "done":
+        raise RuntimeError("请先刷新产业研报元数据")
     if research_download_fn is None:
         from app.data.fetch_research import download_pdf
         research_download_fn = download_pdf
@@ -626,7 +698,7 @@ def run_research_pdfs_refresh(research_download_fn=None, research_parse_fn=None,
         research_parse_fn = parse_pdf_text
     if research_directory is None:
         research_directory = Path("data/research")
-    step = group.steps[4]
+    step = group.steps[5]
     if step.status == "running":
         return
     step.status = "running"
@@ -651,14 +723,16 @@ def run_full_refresh(
     industries_fn=None, industry_hist_fn=None, constituents_fn=None,
     industries_first_fn=None, index_constituents_fn=None,
     research_meta_fn=None,
+    industry_research_meta_fn=None,
     research_download_fn=None, research_parse_fn=None,
     research_directory=None,
 ) -> None:
-    """一键更新全部：按依赖图分三阶段并发执行 7 个任务。
+    """一键更新全部：按依赖图分四阶段并发执行 8 个任务。
 
     阶段1（并行）: ①股票列表 ③财报 ④预告快报 ⑤行业指数
     阶段2（①完成后并行）: ②K线数据 ⑥研报元数据
-    阶段3（⑥完成后）: ⑦研报PDF解析
+    阶段3（⑥完成后）: ⑦产业研报元数据
+    阶段4（⑦完成后）: ⑧研报PDF解析
     """
     group = STATE["all"]
     if group.status == "running":
@@ -689,6 +763,10 @@ def run_full_refresh(
             ]
             # 阶段3：⑥ 完成后提交
             research_meta_fut.exception()
+            industry_research_meta_fut = pool.submit(run_industry_research_meta_refresh, industry_research_meta_fn)
+            all_futures.append(industry_research_meta_fut)
+            # 阶段4：⑦ 完成后提交
+            industry_research_meta_fut.exception()
             all_futures.append(
                 pool.submit(run_research_pdfs_refresh, research_download_fn, research_parse_fn, research_directory)
             )
@@ -766,6 +844,28 @@ def refresh_research_metadata(
                     obj.summary = row.get("summary")
                     obj.pdf_url = row.get("pdf_url")
                     obj.updated_at = now
+                    industry = (row.get("industry") or "").strip()
+                    if industry:
+                        industry_obj = s.query(IndustryResearchReport).filter_by(report_id=row["report_id"]).one_or_none()
+                        if industry_obj is None:
+                            industry_obj = IndustryResearchReport(
+                                report_id=row["report_id"],
+                                industry=industry,
+                                title=row["title"],
+                                published_at=row["published_at"],
+                                stage="metadata",
+                            )
+                            s.add(industry_obj)
+                            s.flush()
+                        industry_obj.industry = industry
+                        industry_obj.title = row["title"]
+                        industry_obj.org = row.get("org")
+                        industry_obj.published_at = row["published_at"]
+                        industry_obj.summary = row.get("summary")
+                        industry_obj.pdf_url = row.get("pdf_url")
+                        if industry_obj.stage != "parsed":
+                            industry_obj.stage = "metadata"
+                        industry_obj.updated_at = now
                 if step is not None:
                     step.done += 1
                     step.progress = int(step.done / step.total * 100) if step.total else 100
@@ -804,10 +904,10 @@ def refresh_research_pdfs(
     每份研报的下载是独立的网络请求（I/O 等待为主），用线程池并发下载+解析；
     数据库写入仍在主线程串行执行，避免 SQLAlchemy session 跨线程使用。
     """
-    step = group.steps[4] if group is not None else None
+    step = group.steps[5] if group is not None else None
     cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
     with SessionLocal() as s:
-        rows = (
+        stock_rows = (
             s.query(ResearchReport)
             .filter(
                 ResearchReport.stage != "parsed",
@@ -815,6 +915,15 @@ def refresh_research_pdfs(
             )
             .all()
         )
+        industry_rows = (
+            s.query(IndustryResearchReport)
+            .filter(
+                IndustryResearchReport.stage != "parsed",
+                IndustryResearchReport.published_at >= cutoff,
+            )
+            .all()
+        )
+        rows = [*stock_rows, *industry_rows]
         if step is not None:
             step.total = len(rows)
             step.done = 0
@@ -882,15 +991,26 @@ def _backfill_state_from_db():
                 forecast_count = s.query(Forecast).count()
                 industry_count = s.query(IndustryIndex).group_by(IndustryIndex.code).count()
                 research_meta_count = s.query(ResearchReport).filter(ResearchReport.stage == "metadata").count()
+                industry_research_meta_count = s.query(IndustryResearchReport).filter(IndustryResearchReport.stage == "metadata").count()
                 pdf_cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-                recent_parsed_count = (
+                stock_recent_parsed_count = (
                     s.query(ResearchReport)
                     .filter(ResearchReport.stage == "parsed", ResearchReport.published_at >= pdf_cutoff)
                     .count()
                 )
-                recent_pending_count = (
+                stock_recent_pending_count = (
                     s.query(ResearchReport)
                     .filter(ResearchReport.stage != "parsed", ResearchReport.published_at >= pdf_cutoff)
+                    .count()
+                )
+                industry_recent_parsed_count = (
+                    s.query(IndustryResearchReport)
+                    .filter(IndustryResearchReport.stage == "parsed", IndustryResearchReport.published_at >= pdf_cutoff)
+                    .count()
+                )
+                industry_recent_pending_count = (
+                    s.query(IndustryResearchReport)
+                    .filter(IndustryResearchReport.stage != "parsed", IndustryResearchReport.published_at >= pdf_cutoff)
                     .count()
                 )
 
@@ -927,13 +1047,22 @@ def _backfill_state_from_db():
                 if f_steps[3].status == "idle":
                     f_steps[3].status = "done"
 
-            recent_pdf_total = recent_parsed_count + recent_pending_count
-            if recent_pdf_total > 0 and f_steps[4].status not in ("running",):
-                f_steps[4].total = recent_pdf_total
-                f_steps[4].done = recent_parsed_count
-                f_steps[4].progress = int(recent_parsed_count / recent_pdf_total * 100)
-                if recent_pending_count == 0 and f_steps[4].status == "idle":
+            if industry_research_meta_count > 0 and f_steps[4].status not in ("running",):
+                f_steps[4].total = max(f_steps[4].total, industry_research_meta_count)
+                f_steps[4].done = industry_research_meta_count
+                f_steps[4].progress = 100
+                if f_steps[4].status == "idle":
                     f_steps[4].status = "done"
+
+            recent_parsed_count = stock_recent_parsed_count + industry_recent_parsed_count
+            recent_pending_count = stock_recent_pending_count + industry_recent_pending_count
+            recent_pdf_total = recent_parsed_count + recent_pending_count
+            if recent_pdf_total > 0 and f_steps[5].status not in ("running",):
+                f_steps[5].total = recent_pdf_total
+                f_steps[5].done = recent_parsed_count
+                f_steps[5].progress = int(recent_parsed_count / recent_pdf_total * 100)
+                if recent_pending_count == 0 and f_steps[5].status == "idle":
+                    f_steps[5].status = "done"
         except Exception:
             pass
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.db import SessionLocal
-from app.models import FinancialReport, Forecast, IndustryIndex, KlineDay, ResearchReport, Stock
+from app.models import FinancialReport, Forecast, IndustryIndex, IndustryResearchReport, KlineDay, ResearchReport, Stock
 
 
 def _quarter(report_date: str | None) -> str | None:
@@ -31,9 +31,19 @@ def get_meta() -> dict:
             .limit(1)
             .scalar()
         )
+        industry_research_updated = s.query(IndustryResearchReport.updated_at).order_by(IndustryResearchReport.updated_at.desc()).limit(1).scalar()
+        industry_research_stage2_updated = (
+            s.query(IndustryResearchReport.updated_at)
+            .filter(IndustryResearchReport.stage == "parsed")
+            .order_by(IndustryResearchReport.updated_at.desc())
+            .limit(1)
+            .scalar()
+        )
         parsed_count = s.query(ResearchReport).filter(ResearchReport.stage == "parsed").count()
+        industry_parsed_count = s.query(IndustryResearchReport).filter(IndustryResearchReport.stage == "parsed").count()
         stock_count = s.query(Stock).filter(Stock.delisted_at.is_(None)).count()
         research_count = s.query(ResearchReport).count()
+        industry_research_count = s.query(IndustryResearchReport).count()
     return {
         "stockList": {"updatedAt": stock_updated, "count": stock_count},
         "klineDay": {"updatedAt": kline_date},
@@ -44,4 +54,5 @@ def get_meta() -> dict:
         "forecasts": {"updatedAt": forecast_updated},
         "industryIndex": {"updatedAt": industry_date},
         "researchReports": {"stage1UpdatedAt": research_updated, "stage2UpdatedAt": research_stage2_updated, "stage2CandidateCount": parsed_count, "count": research_count},
+        "industryResearchReports": {"stage1UpdatedAt": industry_research_updated, "stage2UpdatedAt": industry_research_stage2_updated, "stage2CandidateCount": industry_parsed_count, "count": industry_research_count},
     }

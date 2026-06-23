@@ -7,7 +7,7 @@ import pytest
 
 from app import refresh
 from app.db import SessionLocal, init_db
-from app.models import FinancialReport, Forecast, Industry, IndexConstituent, IndustryIndex, ResearchReport, Stock
+from app.models import FinancialReport, Forecast, Industry, IndexConstituent, IndustryIndex, IndustryResearchReport, ResearchReport, Stock
 
 
 def _fake_kline(code):
@@ -67,6 +67,8 @@ def test_run_full_refresh_marks_done(db_path):
         constituents_fn=lambda code: ["sz000001"],
         industries_first_fn=lambda: [],
         index_constituents_fn=lambda code: [],
+        research_meta_fn=lambda code: [],
+        industry_research_meta_fn=lambda: [],
     )
 
     group = refresh.STATE["fundamental"]
@@ -108,6 +110,8 @@ def test_run_full_refresh_marks_error_on_exception(db_path):
             constituents_fn=lambda code: [],
             industries_first_fn=lambda: [],
             index_constituents_fn=lambda code: [],
+            research_meta_fn=lambda code: [],
+            industry_research_meta_fn=lambda: [],
         )
     assert refresh.STATE["fundamental"].status == "error"
     assert refresh.STATE["all"].status == "error"
@@ -332,6 +336,34 @@ def test_refresh_research_metadata_upserts_stage1(db_path):
         assert row.stage == "metadata"
 
 
+def test_refresh_research_metadata_upserts_industry_reports(db_path):
+    init_db()
+    from app.models import IndustryResearchReport
+
+    refresh.refresh_research_metadata(
+        lambda code: [
+            {
+                "report_id": "R-industry-1",
+                "code": "sz000001",
+                "name": "平安银行",
+                "title": "锂电池行业深度",
+                "org": "测试证券",
+                "published_at": "2025-06-01",
+                "summary": "行业景气度提升",
+                "pdf_url": "https://example.test/industry.pdf",
+                "industry": "锂电池",
+            }
+        ],
+        codes=["sz000001"],
+    )
+
+    with SessionLocal() as s:
+        row = s.query(IndustryResearchReport).filter_by(report_id="R-industry-1").one()
+        assert row.industry == "锂电池"
+        assert row.title == "锂电池行业深度"
+        assert row.pdf_url == "https://example.test/industry.pdf"
+
+
 def test_refresh_research_metadata_dedupes_same_report_id_within_one_fetch(db_path):
     """同一次抓取里出现相同 report_id（如 akshare 返回重复行）时不应触发
     UNIQUE constraint failed: research_reports.report_id。"""
@@ -478,6 +510,35 @@ def test_run_research_meta_refresh_uses_all_stock_codes(db_path):
         assert codes == {"sz000001", "sz000002"}
 
 
+def test_run_industry_research_meta_refresh_uses_industry_report_feed(db_path):
+    init_db()
+    refresh.reset_state()
+
+    called = {"count": 0}
+
+    def research_meta_fn():
+        called["count"] += 1
+        return [
+            {
+                "report_id": "IR-feed-1",
+                "title": "产业研报",
+                "org": "",
+                "published_at": "2025-06-01",
+                "summary": "",
+                "pdf_url": "https://example.test/industry.pdf",
+                "industry": "锂电池",
+            }
+        ]
+
+    refresh.run_industry_research_meta_refresh(research_meta_fn=research_meta_fn)
+
+    assert called["count"] == 1
+    assert refresh.STATE["fundamental"].steps[4].status == "done"
+    with SessionLocal() as s:
+        industries = {r.industry for r in s.query(IndustryResearchReport).all()}
+        assert industries == {"锂电池"}
+
+
 def test_refresh_research_pdfs_processes_all_unparsed_reports(db_path, tmp_path):
     """不再按候选池股票代码过滤，全量未解析的研报都应处理。"""
     init_db()
@@ -496,6 +557,27 @@ def test_refresh_research_pdfs_processes_all_unparsed_reports(db_path, tmp_path)
     with SessionLocal() as s:
         assert s.query(ResearchReport).filter_by(report_id="R1").one().stage == "parsed"
         assert s.query(ResearchReport).filter_by(report_id="R2").one().stage == "parsed"
+
+
+def test_refresh_research_pdfs_processes_industry_reports(db_path, tmp_path):
+    init_db()
+    recent_date = datetime.now().strftime("%Y-%m-%d")
+    with SessionLocal() as s:
+        s.add(IndustryResearchReport(report_id="IR1", industry="锂电池", title="产业", published_at=recent_date, pdf_url="iu1", stage="metadata"))
+        s.commit()
+    target = tmp_path / "industry.pdf"
+    target.write_bytes(b"fake")
+
+    refresh.refresh_research_pdfs(
+        directory=tmp_path,
+        download_fn=lambda url, directory: str(target),
+        parse_fn=lambda path: "产业正文",
+    )
+
+    with SessionLocal() as s:
+        row = s.query(IndustryResearchReport).filter_by(report_id="IR1").one()
+        assert row.stage == "parsed"
+        assert row.content_text == "产业正文"
 
 
 def test_refresh_research_pdfs_skips_download_failures_and_continues(db_path, tmp_path):
@@ -589,7 +671,7 @@ def test_refresh_research_pdfs_updates_progress_incrementally(db_path, tmp_path)
     init_db()
     refresh.reset_state()
     group = refresh.STATE["fundamental"]
-    step = group.steps[4]
+    step = group.steps[5]
     step.progress = 100  # 模拟上一次刷新遗留的 100%
 
     recent_date = datetime.now().strftime("%Y-%m-%d")
@@ -696,6 +778,17 @@ def test_run_full_refresh_can_include_research_steps(db_path, tmp_path):
                 "pdf_url": "u1",
             }
         ],
+        industry_research_meta_fn=lambda: [
+            {
+                "report_id": "IR1",
+                "title": "银行产业研报",
+                "org": "测试证券",
+                "published_at": datetime.now().strftime("%Y-%m-%d"),
+                "summary": "",
+                "pdf_url": "iu1",
+                "industry": "银行Ⅱ",
+            }
+        ],
         research_download_fn=lambda url, directory: str(target),
         research_parse_fn=lambda path: "订单饱满正文",
         research_directory=tmp_path,
@@ -704,6 +797,7 @@ def test_run_full_refresh_can_include_research_steps(db_path, tmp_path):
     group = refresh.STATE["fundamental"]
     assert group.steps[3].progress == 100
     assert group.steps[4].progress == 100
+    assert group.steps[5].progress == 100
     assert refresh.STATE["all"].status == "done"
 
 
@@ -762,6 +856,8 @@ def test_run_full_refresh_populates_index_constituents(db_path):
         constituents_fn=lambda code: [],
         industries_first_fn=lambda: [],
         index_constituents_fn=lambda code: ["sz000001"],
+        research_meta_fn=lambda code: [],
+        industry_research_meta_fn=lambda: [],
     )
 
     with SessionLocal() as s:

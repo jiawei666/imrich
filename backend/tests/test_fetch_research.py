@@ -4,7 +4,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.data.fetch_research import download_pdf, fetch_research_metadata, parse_pdf_text, parse_research_row
+from app.data.fetch_research import (
+    download_pdf,
+    fetch_industry_research_metadata,
+    fetch_research_metadata,
+    parse_pdf_text,
+    parse_research_row,
+)
 
 
 def test_parse_research_row_normalizes_fields():
@@ -26,7 +32,20 @@ def test_parse_research_row_normalizes_fields():
         "published_at": "2025-06-01",
         "summary": "",
         "pdf_url": "https://example.test/H3_AP202506011234567_1.pdf",
+        "industry": "",
     }
+
+
+def test_parse_research_row_includes_industry():
+    row = {
+        "股票代码": "000001",
+        "报告名称": "锂电池行业深度",
+        "indvInduName": "锂电池",
+        "日期": "2025-06-01",
+        "报告PDF链接": "https://example.test/H3_AP202506011234568_1.pdf",
+    }
+    parsed = parse_research_row(row)
+    assert parsed["industry"] == "锂电池"
 
 
 def test_fetch_research_metadata_calls_akshare_with_stock_symbol():
@@ -74,6 +93,76 @@ def test_fetch_research_metadata_returns_empty_when_no_reports():
 
     rows = fetch_research_metadata("sz301331", ak_fn=ak_fn)
     assert rows == []
+
+
+def test_fetch_industry_research_metadata_parses_eastmoney_pages():
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def request_fn(url, params, timeout):
+        calls.append(params.copy())
+        page = int(params["pageNo"])
+        if page == 1:
+            return FakeResponse({
+                "hits": 2,
+                "TotalPage": 2,
+                "data": [
+                    {
+                        "infoCode": "AP1",
+                        "title": "电池行业深度",
+                        "industryName": "电池",
+                        "orgSName": "测试证券",
+                        "publishDate": "2026-06-18 00:00:00.000",
+                    }
+                ],
+            })
+        return FakeResponse({
+            "hits": 2,
+            "TotalPage": 2,
+            "data": [
+                {
+                    "infoCode": "AP2",
+                    "title": "银行行业点评",
+                    "industryName": "银行Ⅱ",
+                    "orgSName": "测试证券",
+                    "publishDate": "2026-06-17 00:00:00.000",
+                }
+            ],
+        })
+
+    rows = fetch_industry_research_metadata(request_fn=request_fn, page_size=100)
+
+    assert calls[0]["qType"] == "1"
+    assert calls[0]["code"] == ""
+    assert rows == [
+        {
+            "report_id": "AP1",
+            "industry": "电池",
+            "title": "电池行业深度",
+            "org": "测试证券",
+            "published_at": "2026-06-18",
+            "summary": "",
+            "pdf_url": "https://pdf.dfcfw.com/pdf/H3_AP1_1.pdf",
+        },
+        {
+            "report_id": "AP2",
+            "industry": "银行Ⅱ",
+            "title": "银行行业点评",
+            "org": "测试证券",
+            "published_at": "2026-06-17",
+            "summary": "",
+            "pdf_url": "https://pdf.dfcfw.com/pdf/H3_AP2_1.pdf",
+        },
+    ]
 
 
 def test_download_pdf_writes_bytes(tmp_path):
