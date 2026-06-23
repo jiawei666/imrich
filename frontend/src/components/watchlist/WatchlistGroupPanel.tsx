@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Settings, ChevronDown, ChevronRight, Star } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ChevronDown, ChevronRight, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WatchlistGroup } from '@/types'
 
@@ -8,14 +7,12 @@ interface WatchlistGroupPanelProps {
   groups: WatchlistGroup[]
   selectedCode: string | null
   onSelectStock: (code: string, name: string) => void
-  onManageClick: () => void
 }
 
 export function WatchlistGroupPanel({
   groups,
   selectedCode,
   onSelectStock,
-  onManageClick,
 }: WatchlistGroupPanelProps) {
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({})
 
@@ -27,17 +24,8 @@ export function WatchlistGroupPanel({
   return (
     <div className="flex h-full flex-col border-r border-line bg-paper/40">
       {/* header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-line-soft px-4 py-3">
+      <div className="flex shrink-0 items-center border-b border-line-soft px-4 py-3">
         <h2 className="text-[14px] font-semibold text-ink">自选股</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onManageClick}
-          className="h-8 gap-1 text-[12px] text-ink-soft"
-        >
-          <Settings className="size-3.5" />
-          管理
-        </Button>
       </div>
 
       {/* group list */}

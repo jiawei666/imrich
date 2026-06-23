@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { WatchlistGroupPanel } from '@/components/watchlist/WatchlistGroupPanel'
 import { AddToWatchlistModal } from '@/components/watchlist/AddToWatchlistModal'
-import { WatchlistManageOverlay } from '@/components/watchlist/WatchlistManageOverlay'
 import { StockDetailPanel } from '@/components/detail/StockDetailPanel'
 import { api } from '@/lib/api'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -19,7 +18,6 @@ export function WatchlistPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [stockDetail, setStockDetail] = useState<StockDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [manageOpen, setManageOpen] = useState(false)
   const [modalState, setModalState] = useState<WatchlistModalState | null>(null)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -75,7 +73,6 @@ export function WatchlistPage() {
             groups={groups}
             selectedCode={selectedCode}
             onSelectStock={handleSelectStock}
-            onManageClick={() => setManageOpen(true)}
           />
         </div>
 
@@ -110,15 +107,6 @@ export function WatchlistPage() {
             onAddToWatchlist={handleAddToWatchlist}
           />
         </div>
-      )}
-
-      {/* manage overlay */}
-      {manageOpen && (
-        <WatchlistManageOverlay
-          groups={groups}
-          onClose={() => setManageOpen(false)}
-          onChanged={fetchGroups}
-        />
       )}
 
       {/* add modal */}
