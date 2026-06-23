@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactElement } from 'react'
-import { ArrowUpDown, ArrowUp, ArrowDown, Loader2, PackageOpen, Pin, RefreshCw, Search } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, Loader2, PackageOpen, RefreshCw, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingOverlay } from '@/components/ui/loading-overlay'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -77,8 +77,13 @@ interface StockListCardProps {
   error?: string | null
   /** 重试回调 */
   onRetry?: () => void
-  /** 置顶回调（提供时每行显示置顶按钮） */
-  onPinCode?: (code: string) => void
+  /** 右键菜单项（提供时行支持右键） */
+  contextMenuActions?: {
+    label: string
+    icon?: ReactElement
+    onClick: (code: string, name: string) => void
+    danger?: boolean
+  }[]
 }
 
 export function StockListCard({
@@ -102,8 +107,41 @@ export function StockListCard({
   onClearHistory,
   error,
   onRetry,
-  onPinCode,
+  contextMenuActions,
 }: StockListCardProps) {
+  // ---- 右键菜单 ----
+  const [ctxMenu, setCtxMenu] = useState<{ code: string; name: string; x: number; y: number } | null>(null)
+  const ctxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (
+        e instanceof MouseEvent &&
+        ctxRef.current &&
+        ctxRef.current.contains(e.target as Node)
+      ) return
+      setCtxMenu(null)
+    }
+    const closeKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setCtxMenu(null) }
+    document.addEventListener('mousedown', close as EventListener)
+    document.addEventListener('keydown', closeKey)
+    return () => {
+      document.removeEventListener('mousedown', close as EventListener)
+      document.removeEventListener('keydown', closeKey)
+    }
+  }, [ctxMenu])
+
+  const handleContextMenu = (e: React.MouseEvent, code: string, name: string) => {
+    if (!contextMenuActions?.length) return
+    e.preventDefault()
+    const menuW = 160
+    const menuH = contextMenuActions.length * 36 + 8
+    const x = Math.min(e.clientX, window.innerWidth - menuW - 8)
+    const y = Math.min(e.clientY, window.innerHeight - menuH - 8)
+    setCtxMenu({ code, name, x, y })
+  }
+
   // ---- 搜索 ----
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -265,7 +303,6 @@ export function StockListCard({
                     <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-16" /></td>
                     <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
                     <td className="px-2 py-2.5"><Skeleton className="ml-auto h-3.5 w-12" /></td>
-                    {onPinCode && <td className="w-8" />}
                   </tr>
                 ))}
               </tbody>
@@ -325,7 +362,6 @@ export function StockListCard({
                   </th>
                   <th className="px-2 pb-2 text-right font-medium">收盘价</th>
                   <th className="px-2 pb-2 text-right font-medium">涨跌幅</th>
-                  {onPinCode && <th className="w-8" />}
                 </tr>
               </thead>
               <tbody>
@@ -336,9 +372,11 @@ export function StockListCard({
                       key={s.code}
                       ref={registerRow(s.code)}
                       onClick={() => handleRowClick(s.code, s.name)}
+                      onContextMenu={(e) => handleContextMenu(e, s.code, s.name)}
                       className={cn(
                         'cursor-pointer border-t border-line-soft transition-colors duration-200 hover:bg-paper-2/70',
                         on && 'bg-brand-soft',
+                        contextMenuActions?.length && 'select-none',
                       )}
                     >
                       <td className="tnum px-2 py-2.5 text-[13px] text-ink-soft">{s.code}</td>
@@ -347,17 +385,6 @@ export function StockListCard({
                       <td className="tnum px-2 py-2.5 text-right text-[13px] text-ink-soft">{fmtCap(s.market_cap)}</td>
                       <td className="tnum px-2 py-2.5 text-right text-sm text-ink">{fmtClose(s.close)}</td>
                       <td className="tnum px-2 py-2.5 text-right text-[13px]">{fmtPctChg(s.pct_chg)}</td>
-                      {onPinCode && (
-                        <td className="px-1 py-2.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onPinCode(s.code) }}
-                            title="置顶"
-                            className="flex size-6 items-center justify-center rounded text-ink-faint/40 transition-colors hover:bg-paper-2 hover:text-ink-soft"
-                          >
-                            <Pin className="size-3.5" />
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   )
                 })}
@@ -375,6 +402,33 @@ export function StockListCard({
           <div ref={sentinelRef} className="h-px" />
         </div>
       </CardContent>
+
+      {/* 右键上下文菜单 */}
+      {ctxMenu && contextMenuActions?.length && (
+        <div
+          ref={ctxRef}
+          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
+          className="min-w-[160px] overflow-hidden rounded-xl border border-line bg-paper py-1 shadow-xl"
+        >
+          <div className="border-b border-line-soft px-3 py-1.5">
+            <span className="text-[12px] font-medium text-ink">{ctxMenu.name}</span>
+            <span className="ml-1.5 tnum text-[11px] text-ink-faint">{ctxMenu.code}</span>
+          </div>
+          {contextMenuActions.map((action) => (
+            <button
+              key={action.label}
+              onClick={() => { action.onClick(ctxMenu.code, ctxMenu.name); setCtxMenu(null) }}
+              className={cn(
+                'flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-paper-2',
+                action.danger ? 'text-red-500 hover:bg-red-50' : 'text-ink',
+              )}
+            >
+              {action.icon && <span className="shrink-0 text-current">{action.icon}</span>}
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
     </Card>
   )
 }

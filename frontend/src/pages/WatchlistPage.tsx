@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Pin, Trash2 } from 'lucide-react'
 import { WatchlistGroupPanel } from '@/components/watchlist/WatchlistGroupPanel'
 import { AddToWatchlistModal } from '@/components/watchlist/AddToWatchlistModal'
 import { StockListCard } from '@/components/screener/StockListCard'
@@ -94,8 +95,8 @@ export function WatchlistPage() {
     setMobileChartOpen(true)
   }, [])
 
-  // 置顶：将当前分组内指定股票的 sort_order 移到最小值 - 1
-  const handlePinCode = useCallback(async (code: string) => {
+  // 置顶
+  const handlePin = useCallback(async (code: string) => {
     const group = groupsRef.current.find((g) => g.id === selectedGroupId)
     if (!group) return
     const item = group.items.find((i) => i.stock_code === code)
@@ -106,6 +107,33 @@ export function WatchlistPage() {
       fetchGroups()
     } catch { /* ignore */ }
   }, [selectedGroupId, fetchGroups])
+
+  // 移出分组
+  const handleRemove = useCallback(async (code: string) => {
+    const group = groupsRef.current.find((g) => g.id === selectedGroupId)
+    if (!group) return
+    const item = group.items.find((i) => i.stock_code === code)
+    if (!item) return
+    try {
+      await api.watchlist.removeItem(item.id)
+      if (selectedCode === code) { setSelectedCode(''); setStockDetail(null) }
+      fetchGroups()
+    } catch { /* ignore */ }
+  }, [selectedGroupId, selectedCode, fetchGroups])
+
+  const contextMenuActions = useMemo(() => [
+    {
+      label: '置顶',
+      icon: <Pin className="size-3.5" />,
+      onClick: (code: string) => handlePin(code),
+    },
+    {
+      label: '移出分组',
+      icon: <Trash2 className="size-3.5" />,
+      onClick: (code: string) => handleRemove(code),
+      danger: true,
+    },
+  ], [handlePin, handleRemove])
 
   const handleAddToWatchlist = useCallback((code: string, name: string, industry?: string) => {
     setModalState({ code, name, industry })
@@ -131,7 +159,7 @@ export function WatchlistPage() {
               loadingMore={false}
               selectedCode={selectedCode}
               onSelectCode={handleSelectCode}
-              onPinCode={handlePinCode}
+              contextMenuActions={contextMenuActions}
             />
           </div>
           {isDesktop && selectedCode && (
