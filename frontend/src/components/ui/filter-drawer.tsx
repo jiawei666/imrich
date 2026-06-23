@@ -41,7 +41,7 @@ export function FilterDrawer({
       <div
         data-open={open ? '' : undefined}
         className="
-          absolute left-0 top-0 z-30 flex h-full w-[220px] flex-col
+          absolute left-0 top-0 z-30 flex h-full w-[min(90vw,320px)] flex-col sm:w-[260px] lg:w-[220px]
           bg-cream/90 backdrop-blur-md
           shadow-[4px_0_20px_-6px_rgba(43,58,77,0.10)]
           transition-transform duration-200 ease-out

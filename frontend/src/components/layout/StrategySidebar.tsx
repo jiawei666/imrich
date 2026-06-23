@@ -25,12 +25,12 @@ function Item({
 }) {
   const filterVisible = !!showFilter && active
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex shrink-0 items-center gap-0.5">
       <button
         onClick={() => onSelect(id)}
         className={cn(
-          'flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors',
-          indent && 'pl-6',
+          'flex min-w-max flex-1 items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-colors',
+          indent && 'lg:pl-6',
           active
             ? 'bg-brand-soft font-medium text-brand-strong'
             : 'text-ink-soft hover:bg-paper-2 hover:text-ink',
@@ -67,8 +67,8 @@ export function StrategySidebar({
   const isFundamental = strategy === 'super-growth' || strategy === 'oversold-bluechip'
 
   return (
-    <aside className="flex w-[180px] shrink-0 flex-col gap-1 border-r border-line bg-paper/40 px-3 py-5">
-      <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+    <aside className="sticky top-0 z-40 flex min-w-0 gap-2 overflow-x-auto border-b border-line bg-cream/90 px-3 py-2 backdrop-blur lg:static lg:w-[180px] lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-x-visible lg:border-b-0 lg:border-r lg:bg-paper/40 lg:px-3 lg:py-5 lg:backdrop-blur-none">
+      <div className="hidden px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint lg:block">
         策略选择
       </div>
       {FUNDAMENTAL.map((s) => (
@@ -82,8 +82,8 @@ export function StrategySidebar({
         />
       ))}
 
-      <div className="my-2 border-t border-line-soft" />
-      <div className="px-3 pb-1 text-[12px] font-medium text-ink-soft">技术面战法</div>
+      <div className="hidden border-t border-line-soft lg:my-2 lg:block" />
+      <div className="hidden px-3 pb-1 text-[12px] font-medium text-ink-soft lg:block">技术面战法</div>
       {TECHNICAL.map((s) => (
         <Item
           key={s.id}

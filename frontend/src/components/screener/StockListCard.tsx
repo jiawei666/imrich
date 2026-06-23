@@ -199,14 +199,14 @@ export function StockListCard({
   return (
     <Card className="relative">
       <LoadingOverlay show={screening || (loading && data.length > 0)} />
-      <CardHeader className="flex-row items-center justify-between gap-3">
+      <CardHeader className="flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <div className="flex items-baseline gap-3">
           <CardTitle>{title}</CardTitle>
           <span className="text-[13px] text-ink-faint">{subtitle}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {/* 搜索框 */}
-          <div className="relative w-40">
+          <div className="relative w-full sm:w-40">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
             <input
               type="text"
@@ -228,7 +228,7 @@ export function StockListCard({
                 }
               }}
             >
-              <SelectTrigger className="h-9 w-auto text-[13px]">
+              <SelectTrigger className="h-9 w-full text-[13px] sm:w-auto">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -244,15 +244,15 @@ export function StockListCard({
         </div>
       </CardHeader>
 
-      <CardContent className="pt-2">
+      <CardContent className="px-3 pt-2 sm:px-5">
         <div
           ref={scrollRef}
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          className="max-h-[calc(100vh-220px)] overflow-y-auto overflow-x-auto rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+          className="max-h-none overflow-y-auto overflow-x-auto rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 lg:max-h-[calc(100vh-220px)]"
         >
           {loading && data.length === 0 ? (
-            <table className="w-full border-collapse">
+            <table className="min-w-[640px] w-full border-collapse">
               <tbody>
                 {Array.from({ length: 12 }).map((_, i) => (
                   <tr key={i} className="border-t border-line-soft first:border-t-0">
@@ -282,7 +282,7 @@ export function StockListCard({
               <span className="text-sm text-ink-soft">暂无数据</span>
             </div>
           ) : (
-            <table className="w-full border-collapse">
+            <table className="min-w-[640px] w-full border-collapse">
               <thead>
                 <tr className="sticky top-0 z-10 bg-paper text-left text-xs text-ink-faint">
                   <th

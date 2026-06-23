@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import type { ReactElement } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent, ReactElement } from 'react'
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingOverlay } from '@/components/ui/loading-overlay'
@@ -64,7 +64,48 @@ export function FundamentalCandidateListCard({
       return sortOrder === 'desc' ? bv - av : av - bv
     })
     return result
-  }, [items, searchQuery, selectedIndex, sortField, sortOrder])
+  }, [items, searchQuery, selectedIndex, indexConstituentMap, sortField, sortOrder])
+
+  // ---- 行选中 + 键盘导航 ----
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
+
+  const registerRow = (code: string) => (el: HTMLTableRowElement | null) => {
+    if (el) rowRefs.current.set(code, el)
+    else rowRefs.current.delete(code)
+  }
+
+  const selectRow = useCallback((row: Candidate) => {
+    onSelectCode(row.code, row.name)
+    requestAnimationFrame(() => {
+      rowRefs.current.get(row.code)?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [onSelectCode])
+
+  const handleRowClick = (code: string, name: string) => {
+    onSelectCode(code, name)
+    scrollRef.current?.focus()
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    if (filtered.length === 0) return
+    e.preventDefault()
+    const idx = filtered.findIndex((x) => x.code === selectedCode)
+    if (e.key === 'ArrowDown') {
+      if (idx === -1) {
+        selectRow(filtered[0])
+      } else if (idx < filtered.length - 1) {
+        selectRow(filtered[idx + 1])
+      }
+    } else {
+      if (idx === -1) {
+        selectRow(filtered[0])
+      } else if (idx > 0) {
+        selectRow(filtered[idx - 1])
+      }
+    }
+  }
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -98,8 +139,8 @@ export function FundamentalCandidateListCard({
   return (
     <Card className="relative flex max-h-full flex-col">
       <LoadingOverlay show={!!loading && items.length > 0} />
-      <CardHeader className="shrink-0 flex-wrap gap-y-2 pb-2">
-        <div className="flex items-baseline gap-3">
+      <CardHeader className="shrink-0 flex-col items-stretch gap-3 pb-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-y-2">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <CardTitle>候选结果</CardTitle>
           <span className="text-[13px] text-ink-faint">
             {updatedAt ? `上次筛选: ${new Date(updatedAt).toLocaleString('zh-CN')}` : '尚未运行筛选'}
@@ -108,8 +149,8 @@ export function FundamentalCandidateListCard({
             共 {filtered.length} 只{filtered.length !== total ? ` / ${total}` : ''}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-40">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:w-40">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
             <input
               type="text"
@@ -123,7 +164,7 @@ export function FundamentalCandidateListCard({
             value={selectedIndex || ALL_INDEX}
             onValueChange={(v) => setSelectedIndex(v === ALL_INDEX ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-32 text-[13px]">
+            <SelectTrigger className="h-9 w-full text-[13px] sm:w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -136,9 +177,15 @@ export function FundamentalCandidateListCard({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-y-auto pt-2">
-        {loading && items.length === 0 ? (
-          <table className="w-full border-collapse">
+      <CardContent className="min-h-0 flex-1 px-3 pt-2 sm:px-5">
+        <div
+          ref={scrollRef}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          className="h-full overflow-y-auto overflow-x-auto rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+        >
+          {loading && items.length === 0 ? (
+          <table className="min-w-[720px] w-full border-collapse">
             <tbody>
               {Array.from({ length: 10 }).map((_, i) => (
                 <tr key={i} className="border-t border-line-soft first:border-t-0">
@@ -156,16 +203,16 @@ export function FundamentalCandidateListCard({
               ))}
             </tbody>
           </table>
-        ) : items.length === 0 && updatedAt === null ? (
+          ) : items.length === 0 && updatedAt === null ? (
           <div className="p-8 text-center text-sm text-ink-faint">
             尚未运行筛选，请点击左侧筛选后运行
           </div>
-        ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-ink-faint">
             {searchQuery || selectedIndex ? '当前过滤条件无匹配结果' : '无候选股'}
           </div>
-        ) : (
-          <table className="w-full border-collapse">
+          ) : (
+          <table className="min-w-[720px] w-full border-collapse">
             <thead>
               <tr className="sticky top-0 z-10 bg-paper text-left text-[11px] text-ink-faint">
                 <th className="px-2 pb-1.5 font-medium">名称</th>
@@ -183,7 +230,8 @@ export function FundamentalCandidateListCard({
                 return (
                   <tr
                     key={item.code}
-                    onClick={() => onSelectCode(item.code, item.name)}
+                    ref={registerRow(item.code)}
+                    onClick={() => handleRowClick(item.code, item.name)}
                     className={cn(
                       'cursor-pointer border-t border-line-soft transition-colors duration-200 hover:bg-paper-2/70',
                       on && 'bg-brand-soft',
@@ -210,7 +258,8 @@ export function FundamentalCandidateListCard({
               })}
             </tbody>
           </table>
-        )}
+          )}
+        </div>
       </CardContent>
     </Card>
   )

@@ -88,7 +88,7 @@ function TaskRow({ index, status, meta, allRunning, onRefresh }: TaskRowProps) {
         : `立即更新${config.label}`
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_112px_180px_168px_40px] items-center gap-4 border-t border-line-soft px-5 py-4 transition-colors hover:bg-paper-2/50">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-line-soft px-4 py-4 transition-colors hover:bg-paper-2/50 md:grid-cols-[minmax(0,1fr)_112px_180px_168px_40px] md:items-center md:gap-4 md:px-5">
       {/* 任务名 + 描述 */}
       <div className="min-w-0">
         <div className="truncate text-[14px] font-bold text-ink">{config.label}</div>
@@ -96,12 +96,12 @@ function TaskRow({ index, status, meta, allRunning, onRefresh }: TaskRowProps) {
       </div>
 
       {/* 状态 */}
-      <div>
+      <div className="justify-self-end md:justify-self-auto">
         <StatusBadge state={state} />
       </div>
 
       {/* 进度 */}
-      <div className="flex items-center gap-3">
+      <div className="col-span-2 flex items-center gap-3 md:col-span-1">
         <ProgressBar value={pct} barClassName={PROGRESS_TONE[state]} className="h-1.5 flex-1" />
         <span className="w-9 shrink-0 text-right text-[12px] tnum text-ink-faint">
           {showPct ? `${pct}%` : '—'}
@@ -109,7 +109,7 @@ function TaskRow({ index, status, meta, allRunning, onRefresh }: TaskRowProps) {
       </div>
 
       {/* 更新时间 */}
-      <div className="truncate text-[12px] tnum text-ink-soft">{updatedAt ?? '—'}</div>
+      <div className="min-w-0 truncate text-[12px] tnum text-ink-soft md:min-w-0">{updatedAt ?? '—'}</div>
 
       {/* 操作 */}
       <button
@@ -117,7 +117,7 @@ function TaskRow({ index, status, meta, allRunning, onRefresh }: TaskRowProps) {
         disabled={disabled}
         title={title}
         onClick={() => onRefresh(config.key)}
-        className="flex size-8 items-center justify-center justify-self-end rounded-lg border border-line bg-paper text-ink-soft transition-colors hover:bg-paper-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-paper"
+        className="flex size-8 items-center justify-center justify-self-end rounded-lg border border-line bg-paper text-ink-soft transition-colors hover:bg-paper-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-paper md:justify-self-end"
       >
         <RotateCw className={cn('size-4', state === 'running' && 'animate-spin text-amber-500')} />
       </button>
@@ -131,12 +131,12 @@ export function TaskList({ status, meta, allRunning, onRefresh }: TaskListProps)
   return (
     <Card className="overflow-hidden">
       {/* 卡片标题 */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-5 md:pt-5">
         <h2 className="text-[15px] font-bold text-ink">数据任务</h2>
       </div>
 
       {/* 列头 */}
-      <div className="grid grid-cols-[minmax(0,1fr)_112px_180px_168px_40px] items-center gap-4 px-5 pb-2 text-[12px] font-medium text-ink-faint">
+      <div className="hidden grid-cols-[minmax(0,1fr)_112px_180px_168px_40px] items-center gap-4 px-5 pb-2 text-[12px] font-medium text-ink-faint md:grid">
         <div>任务</div>
         <div>状态</div>
         <div>进度</div>
