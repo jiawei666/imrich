@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -198,36 +198,45 @@ def run_kline_data_refresh(kline_fn=None):
         step.done = 0
         step.progress = 0
         t0 = time.time()
-        for i, code in enumerate(tqdm(active, desc="K线数据刷新（日+周+月+季）"), 1):
-            if _cancel_flag:
-                step.status = "done"
-                step.error = "服务关闭，任务中断"
-                return
-            df = kline_fn(code)
-            with SessionLocal() as s:
-                s.query(KlineDay).filter_by(code=code).delete()
-                if df is not None and not df.empty:
-                    s.bulk_save_objects([
-                        KlineDay(code=code, date=pd.Timestamp(row.date).strftime("%Y-%m-%d"),
-                                 open=float(row.open), close=float(row.close),
-                                 high=float(row.high), low=float(row.low),
-                                 volume=float(row.volume))
-                        for row in df.itertuples(index=False)
-                    ])
-                for period, model in _PERIOD_MODELS.items():
-                    s.query(model).filter_by(code=code).delete()
+
+        _KLINE_WORKERS = 20
+
+        def _fetch(code: str):
+            return code, kline_fn(code)
+
+        with ThreadPoolExecutor(max_workers=_KLINE_WORKERS) as executor:
+            futures = {executor.submit(_fetch, code): code for code in active}
+            for future in tqdm(as_completed(futures), total=len(active), desc="K线数据刷新（日+周+月+季）"):
+                if _cancel_flag:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    step.status = "done"
+                    step.error = "服务关闭，任务中断"
+                    return
+                code, df = future.result()
+                with SessionLocal() as s:
+                    s.query(KlineDay).filter_by(code=code).delete()
                     if df is not None and not df.empty:
-                        rs = resample_ohlcv(df, period)
                         s.bulk_save_objects([
-                            model(code=code, date=row.date, open=float(row.open),
-                                  close=float(row.close), high=float(row.high),
-                                  low=float(row.low), volume=float(row.volume))
-                            for row in rs.itertuples(index=False)
+                            KlineDay(code=code, date=pd.Timestamp(row.date).strftime("%Y-%m-%d"),
+                                     open=float(row.open), close=float(row.close),
+                                     high=float(row.high), low=float(row.low),
+                                     volume=float(row.volume))
+                            for row in df.itertuples(index=False)
                         ])
-                s.commit()
-            step.done = i
-            step.progress = int(i / step.total * 100) if step.total else 100
-            step.elapsed = _fmt(time.time() - t0)
+                    for period, model in _PERIOD_MODELS.items():
+                        s.query(model).filter_by(code=code).delete()
+                        if df is not None and not df.empty:
+                            rs = resample_ohlcv(df, period)
+                            s.bulk_save_objects([
+                                model(code=code, date=row.date, open=float(row.open),
+                                      close=float(row.close), high=float(row.high),
+                                      low=float(row.low), volume=float(row.volume))
+                                for row in rs.itertuples(index=False)
+                            ])
+                    s.commit()
+                step.done += 1
+                step.progress = int(step.done / step.total * 100) if step.total else 100
+                step.elapsed = _fmt(time.time() - t0)
 
         step.status = "done"
         # 两步都完成才标记 kline 整体 done

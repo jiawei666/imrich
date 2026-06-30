@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, PenLine, Trash2, Check, X, MoreHorizontal } from 'lucide-react'
+import { Plus, PenLine, Trash2, Check, X, MoreHorizontal, ClipboardCopy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import type { WatchlistGroup } from '@/types'
@@ -23,6 +23,7 @@ function GroupMenu({
 }) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [copied, setCopied] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -46,6 +47,18 @@ function GroupMenu({
     setConfirming(false)
   }
 
+  const handleExportThs = async () => {
+    const codes = group.items
+      .map((item) => item.stock_code.replace(/^(sh|sz|bj)/, ''))
+      .join(',')
+    try {
+      await navigator.clipboard.writeText(codes)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* ignore */ }
+    setOpen(false)
+  }
+
   return (
     <div className="relative hidden shrink-0 lg:block" ref={ref}>
       <button
@@ -55,9 +68,9 @@ function GroupMenu({
           setConfirming(false)
         }}
         className="rounded-md p-1.5 text-ink-faint/40 transition-colors hover:bg-paper-2 hover:text-ink-soft"
-        title="更多操作"
+        title={copied ? '已复制！' : '更多操作'}
       >
-        <MoreHorizontal className="size-3.5" />
+        {copied ? <Check className="size-3.5 text-green-500" /> : <MoreHorizontal className="size-3.5" />}
       </button>
 
       {open && (
@@ -89,6 +102,14 @@ function GroupMenu({
               >
                 <PenLine className="size-3.5 text-ink-faint" />
                 重命名
+              </button>
+              <button
+                onClick={handleExportThs}
+                disabled={group.items.length === 0}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-ink hover:bg-paper-2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ClipboardCopy className="size-3.5 text-ink-faint" />
+                复制代码（同花顺）
               </button>
               <button
                 onClick={() => setConfirming(true)}

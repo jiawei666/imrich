@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from typing import Callable, List, Optional
 
 import pandas as pd
@@ -86,9 +85,6 @@ def fetch_sina_spot(progress_callback: Optional[Callable[[int, int], None]] = No
         if progress_callback is not None:
             progress_callback(page, page_count)
 
-        # 简单限速，避免被封
-        if page < page_count:
-            time.sleep(0.3)
 
     if big_df.empty:
         raise RuntimeError("新浪接口返回数据为空，可能是 IP 被封或接口变更")
